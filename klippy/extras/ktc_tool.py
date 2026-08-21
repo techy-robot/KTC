@@ -344,13 +344,20 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                         ex.active_to_standby_delay)
 
     def get_status(self, eventtime=None):  # pylint: disable=unused-argument
+        offset = self.offset if self.offset is not None else [0.0, 0.0, 0.0]
+        global_offset = (
+            self._ktc.global_offset
+            if (self._ktc is not None and getattr(self._ktc, "global_offset", None) is not None)
+            else [0.0, 0.0, 0.0]
+        )
+        toolchanger_name = self.toolchanger.name if getattr(self, "toolchanger", None) is not None else ""
         status = {
             "name": self.name,
             "number": self.number,
             "state": self.state,
-            "toolchanger": self.toolchanger.name,
+            "toolchanger": toolchanger_name,
             "fans": self.fans,
-            "offset": [self.offset[i] + self._ktc.global_offset[i] for i in range(3)],
+            "offset": [offset[i] + global_offset[i] for i in range(3)],
             "heater_names": [heater.name for heater in self.extruder.heaters],
             "heater_state": self.extruder.state,
             "heater_active_temp": self.extruder.active_temp,

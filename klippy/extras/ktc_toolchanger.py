@@ -259,13 +259,15 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
             self.selected_tool = self.TOOL_UNKNOWN
 
     def get_status(self, eventtime=None):   # pylint: disable=unused-argument
+        selected_tool_name = self.selected_tool.name if getattr(self, "selected_tool", None) is not None else ""
+        selected_tool_number = self.selected_tool.number if getattr(self, "selected_tool", None) is not None else None
         status = {
             "name": self.name,
-            "selected_tool": self.selected_tool.name,
-            "selected_tool_n": self.selected_tool.number,
+            "selected_tool": selected_tool_name,
+            "selected_tool_n": selected_tool_number,
             "state": self.state,
             "init_mode": self.init_mode,
-            "tools": list(self.tools),
+            "tools": list(self.tools) if getattr(self, "tools", None) is not None else [],
             "params_available": str(self.params.keys()),
             **self.params,
         }
