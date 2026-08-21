@@ -22,7 +22,7 @@ REPO_DIR=$(realpath $(dirname "$0"))
 KLIPPER_HOME="${HOME}/klipper"
 
 # This is where the extension are downloaded to, a subdirectory of the repo.
-EXTENSION_PATH="${REPO_DIR}/extensions"
+EXTENSION_PATH="${REPO_DIR}/klippy/extras"
 
 # This is where Moonraker is installed
 MOONRAKER_HOME="${HOME}/moonraker"
