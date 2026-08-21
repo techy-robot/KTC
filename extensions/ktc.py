@@ -827,6 +827,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         self, gcmd: "gcode.GCodeCommand"
     ):  # pylint: disable=invalid-name
         tool: 'ktc_tool.KtcTool' = self.get_tool_from_gcmd(gcmd)
+        if tool.offset is None:
+            tool.offset = [0.0, 0.0, 0.0]
         tool.offset = self.offset_from_gcmd(gcmd, tool.offset)
         tool.persistent_state_set("offset", tool.offset)
         self.log.always(f"Tool {tool.name} offset set to: {tool.offset}")
@@ -834,6 +836,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
     cmd_KTC_GLOBAL_OFFSET_SAVE_help = "Set the global tool offset" + _OFFSET_HELP
 
     def cmd_KTC_GLOBAL_OFFSET_SAVE(self, gcmd):  # pylint: disable=invalid-name
+        if self.global_offset is None:
+            self.global_offset = [0.0, 0.0, 0.0]
         self.global_offset = self.offset_from_gcmd(gcmd, self.global_offset)
         self.persistent_state_set("global_offset", self.global_offset)
         self.log.always(f"Global offset set to: {self.global_offset}")
@@ -897,16 +901,21 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             ) from e
 
     def get_status(self, eventtime=None):  # pylint: disable=unused-argument
+        global_offset = self.global_offset if self.global_offset is not None else [0.0, 0.0, 0.0]
+        active_tool_name = self.active_tool.name if getattr(self, "active_tool", None) is not None else ""
+        active_tool_number = self.active_tool.number if getattr(self, "active_tool", None) is not None else None
+        tool_none_name = self.TOOL_NONE.name if getattr(self, "TOOL_NONE", None) is not None else ""
+        tool_unknown_name = self.TOOL_UNKNOWN.name if getattr(self, "TOOL_UNKNOWN", None) is not None else ""
         status = {
-            "global_offset": self.global_offset,
-            "active_tool": self.active_tool.name,  # Active tool name for GCode compatibility.
-            "active_tool_n": self.active_tool.number,  # Active tool number for GCode compatibility.
+            "global_offset": global_offset,
+            "active_tool": active_tool_name,  # Active tool name for GCode compatibility.
+            "active_tool_n": active_tool_number,  # Active tool number for GCode compatibility.
             "saved_fan_speed": self.saved_fan_speed,
             "state": self.state,
-            "tools": list(self.all_tools.keys()),
-            "toolchangers": list(self.all_toolchangers.keys()),
-            "TOOL_NONE": self.TOOL_NONE.name,
-            "TOOL_UNKNOWN": self.TOOL_UNKNOWN.name,
+            "tools": list(self.all_tools.keys()) if getattr(self, "all_tools", None) is not None else [],
+            "toolchangers": list(self.all_toolchangers.keys()) if getattr(self, "all_toolchangers", None) is not None else [],
+            "TOOL_NONE": tool_none_name,
+            "TOOL_UNKNOWN": tool_unknown_name,
             "params_available": str(self.params.keys()),
             **self.params,
         }

@@ -103,7 +103,7 @@ class KtcBaseClass:
         self._ktc: 'ktc.Ktc' = None # type: ignore # We are loading it later.
 
         self._state = self.StateType.NOT_CONFIGURED
-        self.offset: list[float, float, float] = None   # type: ignore
+        self.offset: list[float, float, float] = [0.0, 0.0, 0.0]
 
         self.params = self.get_params_dict_from_config(config)
         # Get inheritable parameters from the config.
@@ -213,7 +213,9 @@ class KtcBaseClass:
         self.state = self.StateType.CONFIGURING
 
         # Get Offset from persistent storage
-        self.offset = self.persistent_state.get("offset", None)
+        self.offset = self.persistent_state.get("offset", [0.0, 0.0, 0.0])
+        if self.offset is None:
+            self.offset = [0.0, 0.0, 0.0]
 
         #  Set the parent object
         if isinstance(self, KtcBaseToolClass):
