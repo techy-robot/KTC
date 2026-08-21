@@ -25,15 +25,7 @@ Universal Toolchanger helper for Klipper
   </a>
 </p>
 
-This adds logic to [Klipper](https://github.com/Klipper3d/klipper) for layered, inherited ToolChanging functionality.
-
-This is a complete rewrite of KTCC v.1 to be more versatile and have infinite levels of toolchangers. Inspiration comes mainly from how RRF enables toolchanging and from the HappyHare project.
-
-I welcome any and all input and contributions. Don't be afraid to make a pull request :D
-
-Complex code example is still under construction.
-
-Thank you!
+This is a fork of [KTC V2](https://github.com/TypQxQ/KTC/) to fix general usabilty issues and (potentially) add new features.
 
 ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Major features:
 <ul>
@@ -49,6 +41,12 @@ Thank you!
 </ul>
 
 <br>
+
+## Fork Features & Bug Fixes:
+
+- (Bug) Installation script not executable by default causing moonraker to tweak out
+- (Bug) Race condition on restart from a GUI causing KTC to halt the startup process. Caused by not have proper init values
+- (cleanup) Moved /extensions to /klippy/extras like most other extra's repositories
 
 ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Installation
 
