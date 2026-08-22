@@ -218,3 +218,32 @@ The log module needs no referenced in the configuration if using default options
 #   When enabled, it will clear the log file existing under another name at each startup.
 #   Usefull when debugging.
 ```
+
+## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) [three_axis_probe] / [nudge] (Added by Asher Edwards)
+
+Configures a 3-axis 1-break switch probe (Nudge) for automatic toolhead offset alignment and stuck filament / blob safety checks.
+
+```ini
+[three_axis_probe nudge]
+#pin: ^!PG12
+#   MCU input pin for the 3-axis break switch (normally closed / NC switch recommended).
+#x: 150.0
+#   Fixed X coordinate of probe center on bed (mm).
+#y: 10.0
+#   Fixed Y coordinate of probe center on bed (mm).
+#z_hop: 10.0
+#   Safe Z height for travel moves around probe (mm).
+#z_probe_depth: -2.0
+#   Depth below top Z apex for X/Y probing pass (mm).
+#search_dist: 6.0
+#   Maximum probing search distance for contact (mm).
+#z_expected: 0.0
+#   Nominal expected Z trigger height for clean nozzle (mm).
+#tolerance: 0.35
+#   Maximum Z deviation allowed before flagging blob alert (mm).
+#speed: 2.0
+#   Probing travel speed (mm/s).
+#debug: False
+#   Enable detailed logging to Klipper log file.
+```
+

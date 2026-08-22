@@ -140,6 +140,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_TOOL_MAP_NR",
             "KTC_DEBUG_HEATERS",
             "KTC_DEBUG_TOOLS",
+            "KTC_THREE_AXIS_ALIGN",
         ]
         for cmd in handlers:
             func = getattr(self, "cmd_" + cmd)
@@ -842,6 +843,20 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         self.persistent_state_set("global_offset", self.global_offset)
         self.log.always(f"Global offset set to: {self.global_offset}")
 
+    cmd_KTC_THREE_AXIS_ALIGN_help = (
+        "Align active tool using 3-axis probe (Nudge probe)."
+    )
+
+    def cmd_KTC_THREE_AXIS_ALIGN(self, gcmd):
+        probe = self.printer.lookup_object("three_axis_probe", None)
+        if probe is None:
+            probes = self.printer.lookup_objects("three_axis_probe")
+            if probes:
+                probe = next(iter(dict(probes).values()))
+        if probe is None:
+            raise gcmd.error("KTC_THREE_AXIS_ALIGN: No [three_axis_probe] module loaded!")
+        probe.cmd_ALIGN_TOOL(gcmd)
+
     ###########################################
     # TOOL REMAPING                           #
     ###########################################
@@ -906,12 +921,14 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         active_tool_number = self.active_tool.number if getattr(self, "active_tool", None) is not None else None
         tool_none_name = self.TOOL_NONE.name if getattr(self, "TOOL_NONE", None) is not None else ""
         tool_unknown_name = self.TOOL_UNKNOWN.name if getattr(self, "TOOL_UNKNOWN", None) is not None else ""
+        has_3axis_probe = len(self.printer.lookup_objects("three_axis_probe")) > 0
         status = {
             "global_offset": global_offset,
             "active_tool": active_tool_name,  # Active tool name for GCode compatibility.
             "active_tool_n": active_tool_number,  # Active tool number for GCode compatibility.
             "saved_fan_speed": self.saved_fan_speed,
             "state": self.state,
+            "has_3axis_probe": has_3axis_probe,
             "tools": list(self.all_tools.keys()) if getattr(self, "all_tools", None) is not None else [],
             "toolchangers": list(self.all_toolchangers.keys()) if getattr(self, "all_toolchangers", None) is not None else [],
             "TOOL_NONE": tool_none_name,

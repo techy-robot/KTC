@@ -38,12 +38,14 @@ This is a fork of [KTC V2](https://github.com/TypQxQ/KTC/) to fix general usabil
   <li>Unlimited parameters for each object, accesible by macros.</li>
   <li>Tool number maping. Remap a tool to another, no need to reslice.</li>
   <li>Persitance of state and statistics across restarts.</li>
+  <li>Integrated 3-Axis 1-Break Sensor Probe (Nudge probe) for automated X/Y/Z tool alignment and blob detection (Added by Asher Edwards).</li>
 </ul>
 
 <br>
 
-## Fork Features & Bug Fixes:
+## Fork Bug Fixes & Features:
 
+- (Added Feature) Integrated Generalized 3-Axis 1-Break Sensor Probe (`three_axis_probe.py` / `nudge.cfg`) for automatic multi-tool offset calibration and print blob safety checks by **Asher Edwards**.
 - (Bug) Installation script not executable by default causing moonraker to tweak out
 - (Bug) Race condition on restart from a GUI causing KTC to halt the startup process. Caused by not have proper init values
 - (cleanup) Moved /extensions to /klippy/extras like most other extra's repositories

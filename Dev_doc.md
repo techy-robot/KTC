@@ -255,6 +255,14 @@ ktc_tool.py is initialized for each tool.
     Offset is overwritten to persistant variable.
 
 
+three_axis_probe.py (Added by Asher Edwards)
+    Klipper extra module handling 3-axis 1-break switch probes (Nudge probe).
+    - Probing: Performs hardware-interrupt homing moves (`probing_move`) in X, Y, Z.
+    - 2-Pass Alignment: Executes 3D iterative apex and orthogonal center probing to eliminate glancing contact errors.
+    - KTC Integration: Directly queries `ktc.active_tool` object, calculates relative offsets (X, Y, Z apex), updates KTC tool offset via `KTC_TOOL_OFFSET_SAVE` / Python object attributes, and persists variables.
+    - Blob / Safety Check: Performs per-layer nozzle height verification during printing to abort if filament blob / stuck material is present.
+
+
 
 - If final_selected has same changer as active_tool.
     - Deselect active_tool and continue selecting final_selected.

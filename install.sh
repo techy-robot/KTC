@@ -249,6 +249,13 @@ install_klipper_config() {
     else
         log_error "Optional RRF compability macros already exists in ${KLIPPER_CONFIG_HOME}/ktc/optional_rrf_compability - skipping copying it there"
     fi
+
+    if [ ! -f "${KLIPPER_CONFIG_HOME}/ktc/nudge.cfg" ]; then
+        log_info "Copying 3-Axis Probe (Nudge) config to ${KLIPPER_CONFIG_HOME}/ktc/nudge.cfg"
+        cp ${REPO_DIR}/config/nudge.cfg ${KLIPPER_CONFIG_HOME}/ktc/nudge.cfg
+        log_important "3-Axis Probe (Nudge) feature added by Asher Edwards is available at ktc/nudge.cfg"
+    fi
+
     # Restart Klipper
     restart_klipper
 

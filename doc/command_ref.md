@@ -19,6 +19,15 @@
   | `KTC_TOOL_OFFSET_SAVE [TOOL=<name> \| T=<index>] [ [[X=<pos>] [Y=<pos>] [Z=<pos>]] \| [[X_ADJUST=<adjust>] [Y_ADJUST=<adjust>] [Z_ADJUST=<adjust>]] ]` | Save the positional offset of an individual tool to file so it can be used later. Reports the tool offset without global offsets if no offset parameter is provided. |
   <br>
 
+  ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) 3-Axis Probe Commands (Added by Asher Edwards)
+  | Command | Description | 
+  | ------- | ----------- |
+  | `PROBE_3AXIS_ALIGN` or `KTC_THREE_AXIS_ALIGN` or `NUDGE_ALIGN_TOOL` `[VERBOSE=1]` | Execute 2-pass 3D iterative tool alignment on the active toolhead and save calculated X, Y, Z offsets to KTC. |
+  | `QUERY_THREE_AXIS_PROBE` or `NUDGE_QUERY_PROBE` | Query the manual trigger state of the 3-axis 1-break switch input. |
+  | `PROBE_3AXIS_AXIS` or `NUDGE_PROBE_AXIS` `AXIS=<X\|Y\|Z> [TARGET=<val>] [DIRECTION=<-1\|1>] [SPEED=<val>]` | Execute a single-axis probing move towards a target position for testing & verification. |
+  | `PROBE_3AXIS_CHECK_FILAMENT` or `NUDGE_CHECK_FILAMENT` `LAYER=<num> [INTERVAL=<num>]` | Probe hotend Z apex during print execution to detect stuck filament or nozzle blobs. |
+  <br>
+
   ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Tool number mapping commands
   | Command | Description | 
   | ------- | ----------- |

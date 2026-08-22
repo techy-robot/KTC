@@ -7,8 +7,20 @@
   - `state` - State of KTC, one of STATE_TYPE.
   - `tools` - List of all tool names.
   - `toolchangers` - List of all toolchangers.
+  - `has_3axis_probe` - True if a 3-axis probe (Nudge) module is loaded.
   - `params_available` - List of available custom parameters as specified in the configuration file.
   - `params_*` - parameter in the above list.
+
+## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) **3-Axis Probe (`three_axis_probe` / `nudge`)** - (Added by Asher Edwards) Accessible via `printer['three_axis_probe <name>']` or `printer.three_axis_probe`
+  - `name` - Probe instance section name.
+  - `fixed_x` - Fixed probe center X location.
+  - `fixed_y` - Fixed probe center Y location.
+  - `last_offset_x` - Calculated X offset from last tool alignment move.
+  - `last_offset_y` - Calculated Y offset from last tool alignment move.
+  - `last_offset_z` - Calculated Z offset (top apex) from last tool alignment move.
+  - `last_z_apex` - Raw Z apex coordinate.
+  - `triggered` - Current status of the break sensor pin.
+
 
 ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) **Tool** - The tool calling this macro is referenced as `myself` in `tool_select_gcode:` and `tool_deselect_gcode:`. One can write `{myself.name}` which would return `3` for a tool named so.
   - `name` - Tool name. 0, 1, 2, etc.
