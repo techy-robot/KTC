@@ -45,31 +45,23 @@ class ThreeAxisProbe:
         ppins = self.printer.lookup_object('pins')
         self.mcu_endstop = ppins.setup_pin('endstop', self.pin)
         
-        # Register generalized G-code commands & Nudge aliases
+        # Register generalized G-code commands
         gcode = self.printer.lookup_object('gcode')
         
         # Query probe state command
         gcode.register_command("QUERY_THREE_AXIS_PROBE", self.cmd_QUERY_PROBE,
                                desc=self.cmd_QUERY_PROBE_help)
-        gcode.register_command("NUDGE_QUERY_PROBE", self.cmd_QUERY_PROBE,
-                               desc=self.cmd_QUERY_PROBE_help)
                                
         # Single-axis probe command
         gcode.register_command("PROBE_3AXIS_AXIS", self.cmd_PROBE_AXIS,
-                               desc=self.cmd_PROBE_AXIS_help)
-        gcode.register_command("NUDGE_PROBE_AXIS", self.cmd_PROBE_AXIS,
                                desc=self.cmd_PROBE_AXIS_help)
                                
         # Full 3D Tool Alignment command
         gcode.register_command("PROBE_3AXIS_ALIGN", self.cmd_ALIGN_TOOL,
                                desc=self.cmd_ALIGN_TOOL_help)
-        gcode.register_command("NUDGE_ALIGN_TOOL", self.cmd_ALIGN_TOOL,
-                               desc=self.cmd_ALIGN_TOOL_help)
                                
         # Filament Blob / Stuck Filament check command
         gcode.register_command("PROBE_3AXIS_CHECK_FILAMENT", self.cmd_CHECK_FILAMENT,
-                               desc=self.cmd_CHECK_FILAMENT_help)
-        gcode.register_command("NUDGE_CHECK_FILAMENT", self.cmd_CHECK_FILAMENT,
                                desc=self.cmd_CHECK_FILAMENT_help)
 
     def get_status(self, eventtime=None):
@@ -266,7 +258,7 @@ class ThreeAxisProbe:
         
         if save_vars:
             gcode.run_script_from_command(
-                f'SAVE_VARIABLE VARIABLE={active_tool_name}_nudge_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
+                f'SAVE_VARIABLE VARIABLE={active_tool_name}_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
             )
 
         gcmd.respond_info(
