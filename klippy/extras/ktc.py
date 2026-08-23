@@ -141,6 +141,10 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_DEBUG_HEATERS",
             "KTC_DEBUG_TOOLS",
             "KTC_THREE_AXIS_ALIGN",
+            "KTC_PROBE_3AXIS_ALIGN",
+            "KTC_PROBE_3AXIS_AXIS",
+            "KTC_QUERY_THREE_AXIS_PROBE",
+            "KTC_PROBE_3AXIS_CHECK_FILAMENT",
         ]
         for cmd in handlers:
             func = getattr(self, "cmd_" + cmd)
@@ -843,19 +847,56 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         self.persistent_state_set("global_offset", self.global_offset)
         self.log.always(f"Global offset set to: {self.global_offset}")
 
+    def _get_three_axis_probe(self, gcmd):
+        probe = self.printer.lookup_object("three_axis_probe", None)
+        if probe is None:
+            for name, obj in self.printer.objects.items():
+                if name.startswith("three_axis_probe"):
+                    probe = obj
+                    break
+        if probe is None:
+            raise gcmd.error("No [three_axis_probe] module loaded in config!")
+        return probe
+
     cmd_KTC_THREE_AXIS_ALIGN_help = (
         "Align active tool using 3-axis probe (Nudge probe)."
     )
 
     def cmd_KTC_THREE_AXIS_ALIGN(self, gcmd):
-        probe = self.printer.lookup_object("three_axis_probe", None)
-        if probe is None:
-            probes = self.printer.lookup_objects("three_axis_probe")
-            if probes:
-                probe = next(iter(dict(probes).values()))
-        if probe is None:
-            raise gcmd.error("KTC_THREE_AXIS_ALIGN: No [three_axis_probe] module loaded!")
+        probe = self._get_three_axis_probe(gcmd)
         probe.cmd_ALIGN_TOOL(gcmd)
+
+    cmd_KTC_PROBE_3AXIS_ALIGN_help = (
+        "Align active tool using 3-axis probe (Nudge probe)."
+    )
+
+    def cmd_KTC_PROBE_3AXIS_ALIGN(self, gcmd):
+        probe = self._get_three_axis_probe(gcmd)
+        probe.cmd_ALIGN_TOOL(gcmd)
+
+    cmd_KTC_PROBE_3AXIS_AXIS_help = (
+        "Perform a single axis probe move."
+    )
+
+    def cmd_KTC_PROBE_3AXIS_AXIS(self, gcmd):
+        probe = self._get_three_axis_probe(gcmd)
+        probe.cmd_PROBE_AXIS(gcmd)
+
+    cmd_KTC_QUERY_THREE_AXIS_PROBE_help = (
+        "Query 3-axis probe state."
+    )
+
+    def cmd_KTC_QUERY_THREE_AXIS_PROBE(self, gcmd):
+        probe = self._get_three_axis_probe(gcmd)
+        probe.cmd_QUERY_PROBE(gcmd)
+
+    cmd_KTC_PROBE_3AXIS_CHECK_FILAMENT_help = (
+        "Check for blob / stuck filament using 3-axis probe."
+    )
+
+    def cmd_KTC_PROBE_3AXIS_CHECK_FILAMENT(self, gcmd):
+        probe = self._get_three_axis_probe(gcmd)
+        probe.cmd_CHECK_FILAMENT(gcmd)
 
     ###########################################
     # TOOL REMAPING                           #

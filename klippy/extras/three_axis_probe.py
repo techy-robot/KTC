@@ -44,27 +44,6 @@ class ThreeAxisProbe:
         # Setup MCU endstop pin for hardware interrupt polling during motion
         ppins = self.printer.lookup_object('pins')
         self.mcu_endstop = ppins.setup_pin('endstop', self.pin)
-        
-        # Register generalized KTC G-code commands
-        gcode = self.printer.lookup_object('gcode')
-        
-        # Query probe state command
-        gcode.register_command("KTC_QUERY_THREE_AXIS_PROBE", self.cmd_QUERY_PROBE,
-                               desc=self.cmd_QUERY_PROBE_help)
-                               
-        # Single-axis probe command
-        gcode.register_command("KTC_PROBE_3AXIS_AXIS", self.cmd_PROBE_AXIS,
-                               desc=self.cmd_PROBE_AXIS_help)
-                               
-        # Full 3D Tool Alignment command
-        gcode.register_command("KTC_PROBE_3AXIS_ALIGN", self.cmd_ALIGN_TOOL,
-                               desc=self.cmd_ALIGN_TOOL_help)
-        gcode.register_command("KTC_THREE_AXIS_ALIGN", self.cmd_ALIGN_TOOL,
-                               desc=self.cmd_ALIGN_TOOL_help)
-                               
-        # Filament Blob / Stuck Filament check command
-        gcode.register_command("KTC_PROBE_3AXIS_CHECK_FILAMENT", self.cmd_CHECK_FILAMENT,
-                               desc=self.cmd_CHECK_FILAMENT_help)
 
     def get_status(self, eventtime=None):
         return {
