@@ -181,7 +181,7 @@ install_update_manager() {
             echo -e "path: ${REPO_DIR}" >> "${dest}"
             echo -e "origin: https://github.com/TypQxQ/KTC.git" >> "${dest}"
             echo -e "primary_branch: main" >> "${dest}"
-            echo -e "install_script: install.sh" >> "${dest}"
+            echo -e "install_script: install.sh -y" >> "${dest}"
             echo -e "managed_services: klipper" >> "${dest}"
 
             restart_moonraker
@@ -226,8 +226,17 @@ install_klipper_config() {
 
 # 
 # Logic to ask a question and get a yes or no answer while displaying a prompt under installation
-# 
+FORCE_YES=0
+if [[ "$*" == *"-y"* ]]; then
+    FORCE_YES=1
+fi
+
 prompt_yn() {
+    if [ "${FORCE_YES}" = "1" ]; then
+        echo "y"
+        return 0
+    fi
+
     while true; do
         read -n1 -p "
 $@ (y/n)? " yn
@@ -285,7 +294,7 @@ log_blank
 log_blank
 log_important "KTC is used to facilitate toolchanging under Klipper."
 log_blank
-log_info "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
+log_info "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-y]"
 log_blank
 log_blank
 log_important "This script will install the KTC extensions and macros."
