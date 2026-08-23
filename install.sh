@@ -181,7 +181,7 @@ install_update_manager() {
             echo -e "path: ${REPO_DIR}" >> "${dest}"
             echo -e "origin: https://github.com/TypQxQ/KTC.git" >> "${dest}"
             echo -e "primary_branch: main" >> "${dest}"
-            echo -e "install_script: install.sh -y" >> "${dest}"
+            echo -e "install_script: install.sh" >> "${dest}"
             echo -e "managed_services: klipper" >> "${dest}"
 
             restart_moonraker
@@ -232,7 +232,7 @@ if [[ "$*" == *"-y"* ]]; then
 fi
 
 prompt_yn() {
-    if [ "${FORCE_YES}" = "1" ]; then
+    if [ "${FORCE_YES}" = "1" ] || [ ! -t 0 ]; then
         echo "y"
         return 0
     fi
