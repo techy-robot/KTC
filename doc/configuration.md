@@ -245,5 +245,11 @@ Configures a 3-axis 1-break switch probe (Nudge) for automatic toolhead offset a
 #   Probing travel speed (mm/s).
 #debug: False
 #   Enable detailed logging to Klipper log file.
+#on_align_gcode:
+#   Custom G-code macro to execute automatically after tool alignment finishes.
+#   Passed parameters: TOOL, X, Y, Z, APEX, X_CENTER, Y_CENTER.
+#on_blob_detected_gcode:
+#   Custom G-code macro to execute when a blob/stuck filament is detected during print checks.
+#   Passed parameters: LAYER, PROBED_Z, EXPECTED_Z, TOLERANCE, BLOB_DETECTED.
 ```
 

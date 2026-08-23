@@ -24,11 +24,22 @@ class ThreeAxisProbe:
         self.speed = config.getfloat('speed', 2.0)
         self.debug = config.getboolean('debug', False)
         
-        # Probing state tracking
+        # Optional customizable macro callbacks from config
+        self.on_align_gcode = config.get('on_align_gcode', '')
+        self.on_blob_detected_gcode = config.get('on_blob_detected_gcode', '')
+        
+        # Probing state tracking accessible to custom G-code macros
+        self.probe_status = "IDLE"
+        self.last_tool_name = "none"
         self.last_offset_x = 0.0
         self.last_offset_y = 0.0
         self.last_offset_z = 0.0
         self.last_z_apex = 0.0
+        self.last_x_center = 0.0
+        self.last_y_center = 0.0
+        self.last_probed_z = 0.0
+        self.last_blob_detected = False
+        self.last_query_triggered = False
         
         # Setup MCU endstop pin for hardware interrupt polling during motion
         ppins = self.printer.lookup_object('pins')
@@ -74,10 +85,17 @@ class ThreeAxisProbe:
             'tolerance': self.tolerance,
             'speed': self.speed,
             'debug': self.debug,
+            'status': self.probe_status,
+            'last_tool_name': self.last_tool_name,
             'last_offset_x': self.last_offset_x,
             'last_offset_y': self.last_offset_y,
             'last_offset_z': self.last_offset_z,
             'last_z_apex': self.last_z_apex,
+            'last_x_center': self.last_x_center,
+            'last_y_center': self.last_y_center,
+            'last_probed_z': self.last_probed_z,
+            'last_blob_detected': self.last_blob_detected,
+            'last_query_triggered': self.last_query_triggered,
         }
 
     def _probing_move(self, toolhead, target_pos, speed):
@@ -102,6 +120,7 @@ class ThreeAxisProbe:
         toolhead = self.printer.lookup_object('toolhead')
         print_time = toolhead.get_last_move_time()
         triggered = self.mcu_endstop.query_endstop(print_time)
+        self.last_query_triggered = bool(triggered)
         
         state_str = "TRIGGERED (Contact Detected)" if triggered else "OPEN (No Contact)"
         gcmd.respond_info(f"3-Axis Probe '{self.name}' [{self.pin}] status: {state_str}")
@@ -195,6 +214,8 @@ class ThreeAxisProbe:
             raise gcmd.error("3-AXIS ALIGN FAILED: No active KTC tool selected!")
 
         cur_pos = toolhead.get_position()
+        self.probe_status = "ALIGNING"
+        self.last_tool_name = str(active_tool_name)
         
         # 1. Approach probe at safe Z
         toolhead.manual_move([cur_pos[0], cur_pos[1], self.z_hop], 50.0)
@@ -214,12 +235,15 @@ class ThreeAxisProbe:
         # 4. Calculate relative offsets
         offset_x = x_center - self.fixed_x
         offset_y = y_center - self.fixed_y
-        offset_z = z_apex
+        offset_z = z_apex - self.z_expected
         
         self.last_offset_x = offset_x
         self.last_offset_y = offset_y
         self.last_offset_z = offset_z
         self.last_z_apex = z_apex
+        self.last_x_center = x_center
+        self.last_y_center = y_center
+        self.probe_status = "ALIGNED"
         
         # 5. Apply & save tool offset for TypQxQ/KTC (Klipper ToolChanger)
         gcode = self.printer.lookup_object('gcode')
@@ -251,6 +275,12 @@ class ThreeAxisProbe:
             f"  Y_center={y_center:.4f} mm (Offset Y={offset_y:.4f} mm)\n"
             f"  Z_apex  ={z_apex:.4f} mm (Offset Z={offset_z:.4f} mm)"
         )
+
+        # 6. Configured custom macro callback execution
+        if self.on_align_gcode.strip():
+            gcode.run_script_from_command(
+                f"{self.on_align_gcode.strip()} TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} APEX={z_apex:.4f} X_CENTER={x_center:.4f} Y_CENTER={y_center:.4f}"
+            )
         
         toolhead.manual_move([x_center, y_center, self.z_hop], 50.0)
 
@@ -272,7 +302,19 @@ class ThreeAxisProbe:
         pos_z = self._probing_move(toolhead, [self.fixed_x, self.fixed_y, 0.0], self.speed)
         probed_z = pos_z[2]
         
-        if probed_z > (self.z_expected + self.tolerance):
+        self.last_probed_z = probed_z
+        is_blob = probed_z > (self.z_expected + self.tolerance)
+        self.last_blob_detected = is_blob
+        self.probe_status = "BLOB_DETECTED" if is_blob else "CHECK_PASSED"
+
+        # Configured custom macro callback execution
+        if self.on_blob_detected_gcode.strip():
+            gcode = self.printer.lookup_object('gcode')
+            gcode.run_script_from_command(
+                f"{self.on_blob_detected_gcode.strip()} LAYER={layer} PROBED_Z={probed_z:.3f} EXPECTED_Z={self.z_expected:.3f} TOLERANCE={self.tolerance:.3f} BLOB_DETECTED={'1' if is_blob else '0'}"
+            )
+        
+        if is_blob:
             raise gcmd.error(
                 f"3-AXIS PROBE SAFETY ALERT: Stuck filament / blob detected on hotend! "
                 f"Triggered early at Z={probed_z:.3f}mm (expected max {self.z_expected + self.tolerance:.3f}mm)"
@@ -289,4 +331,5 @@ def load_config(config):
 # Support [nudge] config section alias
 def load_config_prefix(config):
     return ThreeAxisProbe(config)
+
 

@@ -15,11 +15,18 @@
   - `name` - Probe instance section name.
   - `fixed_x` - Fixed probe center X location.
   - `fixed_y` - Fixed probe center Y location.
-  - `last_offset_x` - Calculated X offset from last tool alignment move.
-  - `last_offset_y` - Calculated Y offset from last tool alignment move.
-  - `last_offset_z` - Calculated Z offset (top apex) from last tool alignment move.
-  - `last_z_apex` - Raw Z apex coordinate.
-  - `triggered` - Current status of the break sensor pin.
+  - `status` - Current probe state string (`IDLE`, `ALIGNING`, `ALIGNED`, `BLOB_DETECTED`, `CHECK_PASSED`).
+  - `last_tool_name` - Name of active tool probed during last alignment.
+  - `last_offset_x` - Relative X offset (`last_x_center - fixed_x`).
+  - `last_offset_y` - Relative Y offset (`last_y_center - fixed_y`).
+  - `last_offset_z` - Relative Z offset (`last_z_apex - z_expected`).
+  - `last_z_apex` - Raw physical machine Z coordinate where top contact occurred (un-offset).
+  - `last_x_center` - Raw physical machine X center coordinate.
+  - `last_y_center` - Raw physical machine Y center coordinate.
+  - `last_probed_z` - Last Z height measured during filament blob check.
+  - `last_blob_detected` - True if stuck filament / blob was detected.
+  - `last_query_triggered` - True if last switch query was triggered.
+
 
 
 ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) **Tool** - The tool calling this macro is referenced as `myself` in `tool_select_gcode:` and `tool_deselect_gcode:`. One can write `{myself.name}` which would return `3` for a tool named so.
