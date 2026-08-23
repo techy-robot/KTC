@@ -191,43 +191,6 @@ install_update_manager() {
 # Logic to install the configuration to Klipper
 # 
 install_klipper_config() {
-    log_header "Adding configuration to printer.cfg"
-
-    # Add configuration to printer.cfg if it doesn't exist
-    dest=${KLIPPER_CONFIG_HOME}/printer.cfg
-    if test -f $dest; then
-        # Backup the original printer.cfg file
-        next_dest="$(nextfilename "$dest")"
-        log_info "Copying original printer.cfg file to ${next_dest}"
-        cp ${dest} ${next_dest}
-
-        # Add the configuration to printer.cfg
-        # This example assumes that that both the server and the webcam stream are running on the same machine as Klipper
-        # The ktc section is not needed if a tool is configured but loaded here for the macros to work if no tool is configured
-        already_included=$(grep -c "\[ktc\]" ${dest} || true)
-        if [ "${already_included}" -eq 0 ]; then
-            echo "" >> "${dest}"    # Add a blank line
-            echo "" >> "${dest}"    # Add a blank line
-            echo -e "[ktc]" >> "${dest}"    # Add the section header
-
-            log_info "Added KTC configuration to printer.cfg"
-            log_important "Please check the configuration in printer.cfg and adjust it as needed"
-        else
-            log_error "[ktc] already exists in printer.cfg - skipping adding it there"
-        fi
-
-        # Add the inclusion of macros to printer.cfg if it doesn't exist
-        already_included=$(grep -c "\[include ktc/base/*.cfg\]" ${dest} || true)
-        if [ "${already_included}" -eq 0 ]; then
-            echo "" >> "${dest}"    # Add a blank line
-            echo -e "[include ktc/base/*.cfg]" >> "${dest}"    # Add the section header
-            echo -e "[include ktc/optional_rrf_compability/*.cfg]" >> "${dest}"    # Add the section header
-        else
-            log_error "[include ktc/base/*.cfg] already exists in printer.cfg - skipping adding it and the optional macros there"
-        fi
-    else
-        log_error "File printer.cfg file not found! Cannot add KTC configuration. Do it manually."
-    fi
 
     if [ ! -d "${KLIPPER_CONFIG_HOME}/ktc" ]; then
         log_info "Creating the ${KLIPPER_CONFIG_HOME}/ktc directory"
@@ -248,12 +211,6 @@ install_klipper_config() {
         cp -r ${REPO_DIR}/macros/optional_rrf_compability ${KLIPPER_CONFIG_HOME}/ktc
     else
         log_error "Optional RRF compability macros already exists in ${KLIPPER_CONFIG_HOME}/ktc/optional_rrf_compability - skipping copying it there"
-    fi
-
-    if [ ! -f "${KLIPPER_CONFIG_HOME}/ktc/nudge.cfg" ]; then
-        log_info "Copying 3-Axis Probe (Nudge) config to ${KLIPPER_CONFIG_HOME}/ktc/nudge.cfg"
-        cp ${REPO_DIR}/config/nudge.cfg ${KLIPPER_CONFIG_HOME}/ktc/nudge.cfg
-        log_important "3-Axis Probe (Nudge) feature added by Asher Edwards is available at ktc/nudge.cfg"
     fi
 
     # Restart Klipper
