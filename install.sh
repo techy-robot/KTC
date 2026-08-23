@@ -33,6 +33,12 @@ KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
 # This is where Klipper config files were stored before the 0.10.0 release
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 
+if [[ -e ${KLIPPER_HOME}/klippy/plugins/ ]]; then
+    KLIPPER_PLUGINS_PATH="${KLIPPER_HOME}/klippy/plugins/"
+else
+    KLIPPER_PLUGINS_PATH="${KLIPPER_HOME}/klippy/extras/"
+fi
+
 #
 # Console Write Helpers
 #
@@ -147,7 +153,7 @@ link_extension()
     log_header "Linking extension files to Klipper..."
 
     for file in $(cd ${EXTENSION_PATH}/ ; ls *.py); do
-        ln -sf "${EXTENSION_PATH}/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
+        ln -sf "${EXTENSION_PATH}/${file}" "${KLIPPER_PLUGINS_PATH}/${file}"
         log_info "Linking extension file: (${file})."
     done
 }
