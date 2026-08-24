@@ -859,7 +859,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
     cmd_KTC_THREE_AXIS_PROBE_ALIGN_help = (
         "Align toolhead offsets (X, Y, Z or ALL) using 3-axis probe.\n"
         "Parameters: [AXIS=ALL|X|Y|Z] [TOOL=<name>] [SPEED=<val>] [DISTANCE=<val>] "
-        "[DIRECTION=1|-1] [TARGET=<val>] [VERBOSE=0|1] [SAVE=0|1]"
+        "[VERBOSE=0|1] [SAVE=0|1]"
     )
 
     def cmd_KTC_THREE_AXIS_PROBE_ALIGN(self, gcmd):

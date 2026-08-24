@@ -137,7 +137,7 @@ class ThreeAxisProbe:
     cmd_ALIGN_TOOL_help = (
         "Align toolhead offsets (X, Y, Z or ALL) using 3-axis probe.\n"
         "Parameters: [AXIS=ALL|X|Y|Z] [TOOL=<name>] [SPEED=<val>] [DISTANCE=<val>] "
-        "[DIRECTION=1|-1] [TARGET=<val>] [VERBOSE=0|1] [SAVE=0|1]"
+        "[VERBOSE=0|1] [SAVE=0|1]"
     )
     def cmd_ALIGN_TOOL(self, gcmd):
         axis = gcmd.get('AXIS', 'ALL').upper()
@@ -148,34 +148,9 @@ class ThreeAxisProbe:
         speed = gcmd.get_float('SPEED', self.speed)
         dist = gcmd.get_float('DISTANCE', self.search_dist)
         verbose = gcmd.get_int('VERBOSE', 0) == 1 or self.debug
-
-        # Single axis probe mode
-        if axis in ['X', 'Y', 'Z']:
-            cur_pos = toolhead.get_position()
-            direction = gcmd.get_float('DIRECTION', -1.0)
-            target_pos = list(cur_pos)
-            axis_idx = {'X': 0, 'Y': 1, 'Z': 2}[axis]
-            
-            params = gcmd.get_command_parameters()
-            if 'TARGET' in params:
-                target_pos[axis_idx] = float(params['TARGET'])
-            else:
-                target_pos[axis_idx] = cur_pos[axis_idx] + (direction * dist)
-                
-            gcmd.respond_info(
-                f"3-Axis Probe '{self.name}': Probing {axis}-axis from {cur_pos[axis_idx]:.3f} "
-                f"towards {target_pos[axis_idx]:.3f} at speed {speed} mm/s..."
-            )
-            
-            end_pos = self._probing_move(toolhead, target_pos, speed)
-            gcmd.respond_info(
-                f"3-Axis Probe Triggered! Endpoint: X={end_pos[0]:.4f}, Y={end_pos[1]:.4f}, Z={end_pos[2]:.4f}"
-            )
-            return
-
-        # Full 3D Tool Alignment mode (AXIS=ALL)
-        ktc = self.printer.lookup_object('ktc', None)
         should_save = gcmd.get_int('SAVE', 1) == 1
+
+        ktc = self.printer.lookup_object('ktc', None)
 
         # Identify target tool: explicit TOOL parameter, active KTC tool, or GLOBAL
         tool_param = gcmd.get('TOOL', None)
@@ -229,58 +204,105 @@ class ThreeAxisProbe:
         target_z_carriage = 0.0 - existing_offset_z
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
         z_apex = pos_z[2] + existing_offset_z
+        offset_z = round(z_apex - self.z_expected, 4)
+
+        self.last_z_apex = z_apex
+        self.last_offset_z = offset_z
         
         # Move back up to safe height
         toolhead.manual_move([target_x, target_y, safe_z], 50.0)
-        
-        # 3. Perform 2-pass iterative X/Y probing at z_probe_depth below apex
+
+        x_carriage_center = target_x
+        y_carriage_center = target_y
+        x_center = self.fixed_x
+        y_center = self.fixed_y
+        offset_x = self.last_offset_x
+        offset_y = self.last_offset_y
+
         xy_probe_z = pos_z[2] + self.z_probe_depth
-        x_carriage_center, y_carriage_center = self._probe_2pass_center(
-            toolhead, target_x, target_y, xy_probe_z, verbose, gcmd
-        )
-        x_center = x_carriage_center + existing_offset_x
-        y_center = y_carriage_center + existing_offset_y
-        
-        # 4. Calculate relative offsets
-        offset_x = round(x_center - self.fixed_x, 4)
-        offset_y = round(y_center - self.fixed_y, 4)
-        offset_z = round(z_apex - self.z_expected, 4)
-        
-        self.last_offset_x = offset_x
-        self.last_offset_y = offset_y
-        self.last_offset_z = offset_z
-        self.last_z_apex = z_apex
-        self.last_x_center = x_center
-        self.last_y_center = y_center
+
+        # 3. Perform probing moves depending on requested AXIS
+        if axis == 'ALL':
+            x_carriage_center, y_carriage_center = self._probe_2pass_center(
+                toolhead, target_x, target_y, xy_probe_z, verbose, gcmd
+            )
+            x_center = x_carriage_center + existing_offset_x
+            y_center = y_carriage_center + existing_offset_y
+            offset_x = round(x_center - self.fixed_x, 4)
+            offset_y = round(y_center - self.fixed_y, 4)
+            self.last_offset_x = offset_x
+            self.last_offset_y = offset_y
+            self.last_x_center = x_center
+            self.last_y_center = y_center
+
+        elif axis == 'X':
+            toolhead.manual_move([target_x + dist, target_y, xy_probe_z], 50.0)
+            pos_x1 = self._probing_move(toolhead, [target_x - dist, target_y, xy_probe_z], speed)
+
+            toolhead.manual_move([target_x - dist, target_y, xy_probe_z], 50.0)
+            pos_x2 = self._probing_move(toolhead, [target_x + dist, target_y, xy_probe_z], speed)
+
+            x_carriage_center = (pos_x1[0] + pos_x2[0]) / 2.0
+            x_center = x_carriage_center + existing_offset_x
+            offset_x = round(x_center - self.fixed_x, 4)
+            self.last_offset_x = offset_x
+            self.last_x_center = x_center
+
+        elif axis == 'Y':
+            toolhead.manual_move([target_x, target_y + dist, xy_probe_z], 50.0)
+            pos_y1 = self._probing_move(toolhead, [target_x, target_y - dist, xy_probe_z], speed)
+
+            toolhead.manual_move([target_x, target_y - dist, xy_probe_z], 50.0)
+            pos_y2 = self._probing_move(toolhead, [target_x, target_y + dist, xy_probe_z], speed)
+
+            y_carriage_center = (pos_y1[1] + pos_y2[1]) / 2.0
+            y_center = y_carriage_center + existing_offset_y
+            offset_y = round(y_center - self.fixed_y, 4)
+            self.last_offset_y = offset_y
+            self.last_y_center = y_center
+
         self.probe_status = "ALIGNED"
-        
-        # 5. Apply & save offset natively via KTC Python API
+
+        # 4. Save offsets for requested axis (or ALL)
         if should_save and ktc is not None:
-            new_offset = [offset_x, offset_y, offset_z]
             if is_global or ktc_tool_obj is None:
-                ktc.global_offset = new_offset
+                current_offset = list(ktc.global_offset) if ktc.global_offset else [0.0, 0.0, 0.0]
+            else:
+                current_offset = list(ktc_tool_obj.offset) if ktc_tool_obj.offset else [0.0, 0.0, 0.0]
+
+            if axis in ['ALL', 'X']:
+                current_offset[0] = offset_x
+            if axis in ['ALL', 'Y']:
+                current_offset[1] = offset_y
+            if axis in ['ALL', 'Z']:
+                current_offset[2] = offset_z
+
+            if is_global or ktc_tool_obj is None:
+                ktc.global_offset = current_offset
                 ktc.persistent_state_set("global_offset", ktc.global_offset)
                 if hasattr(ktc, 'log') and ktc.log:
                     ktc.log.always(f"Global offset set by 3-axis probe to: {ktc.global_offset}")
             else:
-                ktc_tool_obj.offset = new_offset
+                ktc_tool_obj.offset = current_offset
                 ktc_tool_obj.persistent_state_set("offset", ktc_tool_obj.offset)
                 if hasattr(ktc, 'log') and ktc.log:
                     ktc.log.always(f"Tool '{ktc_tool_obj.name}' offset set by 3-axis probe to: {ktc_tool_obj.offset}")
 
         target_descr = "GLOBAL offset" if is_global else f"tool '{active_tool_name}'"
-        gcmd.respond_info(
-            f"3-Axis Probe alignment complete for {target_descr}:\n"
-            f"  X_center={x_center:.4f} mm (Offset X={offset_x:.4f} mm)\n"
-            f"  Y_center={y_center:.4f} mm (Offset Y={offset_y:.4f} mm)\n"
-            f"  Z_apex  ={z_apex:.4f} mm (Offset Z={offset_z:.4f} mm)"
-        )
+        res_info = f"3-Axis Probe alignment complete for {target_descr} (AXIS={axis}):\n"
+        if axis in ['ALL', 'X']:
+            res_info += f"  X_center={x_center:.4f} mm (Offset X={offset_x:.4f} mm)\n"
+        if axis in ['ALL', 'Y']:
+            res_info += f"  Y_center={y_center:.4f} mm (Offset Y={offset_y:.4f} mm)\n"
+        if axis in ['ALL', 'Z']:
+            res_info += f"  Z_apex  ={z_apex:.4f} mm (Offset Z={offset_z:.4f} mm)"
+        gcmd.respond_info(res_info.rstrip())
 
-        # 6. Configured custom macro callback execution
+        # 5. Configured custom macro callback execution
         if self.on_align_gcode.strip():
             gcode = self.printer.lookup_object('gcode')
             gcode.run_script_from_command(
-                f"{self.on_align_gcode.strip()} TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} APEX={z_apex:.4f} X_CENTER={x_center:.4f} Y_CENTER={y_center:.4f}"
+                f"{self.on_align_gcode.strip()} TOOL={active_tool_name} AXIS={axis} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} APEX={z_apex:.4f} X_CENTER={x_center:.4f} Y_CENTER={y_center:.4f}"
             )
         
         toolhead.manual_move([x_carriage_center, y_carriage_center, safe_z], 50.0)
