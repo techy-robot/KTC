@@ -74,16 +74,17 @@ class ThreeAxisProbe:
     def _probing_move(self, toolhead, target_pos, speed):
         """Execute a probing move stopping on mcu_endstop trigger."""
         homing = self.printer.lookup_object('homing')
+        
+        # Ensure kinematics steppers are registered with the probe endstop
+        kin = toolhead.get_kinematics()
+        for s in kin.get_steppers():
+            if s not in self.mcu_endstop.get_steppers():
+                self.mcu_endstop.add_stepper(s)
+
         if self.debug:
             logging.info(f"3-Axis Probe '{self.name}': probing move towards {target_pos} at speed {speed}")
             
-        try:
-            probe_session = homing.probing_move(self.mcu_endstop, target_pos, speed)
-        except TypeError:
-            kin = toolhead.get_kinematics()
-            steppers = kin.get_steppers()
-            probe_session = homing.probing_move(self.mcu_endstop, steppers, target_pos, speed)
-
+        probe_session = homing.probing_move(self.mcu_endstop, target_pos, speed)
         endpoint = probe_session.get_endpoint()
         
         if self.debug:
