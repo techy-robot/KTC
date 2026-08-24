@@ -174,7 +174,6 @@ class ThreeAxisProbe:
             return
 
         # Full 3D Tool Alignment mode (AXIS=ALL)
-        save_vars = self.printer.lookup_object('save_variables', None)
         ktc = self.printer.lookup_object('ktc', None)
         should_save = gcmd.get_int('SAVE', 1) == 1
 
@@ -191,10 +190,6 @@ class ThreeAxisProbe:
             if hasattr(ktc, 'active_tool') and ktc.active_tool not in getattr(ktc, 'INVALID_TOOLS', []):
                 ktc_tool_obj = ktc.active_tool
                 active_tool_name = ktc_tool_obj.name
-        elif not tool_param and save_vars:
-            val = save_vars.allVariables.get("active_tool", "tool_none")
-            if val not in ["tool_none", "", "-1", "UNKNOWN"]:
-                active_tool_name = val
 
         # If no tool is specified or active, target is GLOBAL
         if not active_tool_name or active_tool_name in ["tool_none", "", "-1", "UNKNOWN"]:
@@ -222,9 +217,9 @@ class ThreeAxisProbe:
         x_center, y_center = self._probe_2pass_center(toolhead, self.fixed_x, self.fixed_y, xy_probe_z, verbose, gcmd)
         
         # 4. Calculate relative offsets
-        offset_x = x_center - self.fixed_x
-        offset_y = y_center - self.fixed_y
-        offset_z = z_apex - self.z_expected
+        offset_x = round(x_center - self.fixed_x, 4)
+        offset_y = round(y_center - self.fixed_y, 4)
+        offset_z = round(z_apex - self.z_expected, 4)
         
         self.last_offset_x = offset_x
         self.last_offset_y = offset_y
@@ -234,51 +229,19 @@ class ThreeAxisProbe:
         self.last_y_center = y_center
         self.probe_status = "ALIGNED"
         
-        # 5. Apply & save offset (Global or Tool)
-        if should_save:
-            gcode = self.printer.lookup_object('gcode')
-            if is_global:
-                try:
-                    gcode.run_script_from_command(
-                        f"KTC_GLOBAL_OFFSET_SAVE X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f}"
-                    )
-                except Exception:
-                    gcode.run_script_from_command(
-                        f"SET_GCODE_OFFSET X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} MOVE=0"
-                    )
-
-                if ktc is not None:
-                    try:
-                        ktc.global_offset = [offset_x, offset_y, offset_z]
-                        ktc.persistent_state_set("global_offset", ktc.global_offset)
-                    except Exception:
-                        pass
-
-                if save_vars:
-                    gcode.run_script_from_command(
-                        f'SAVE_VARIABLE VARIABLE=global_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
-                    )
+        # 5. Apply & save offset natively via KTC Python API
+        if should_save and ktc is not None:
+            new_offset = [offset_x, offset_y, offset_z]
+            if is_global or ktc_tool_obj is None:
+                ktc.global_offset = new_offset
+                ktc.persistent_state_set("global_offset", ktc.global_offset)
+                if hasattr(ktc, 'log') and ktc.log:
+                    ktc.log.always(f"Global offset set by 3-axis probe to: {ktc.global_offset}")
             else:
-                try:
-                    gcode.run_script_from_command(
-                        f"KTC_TOOL_OFFSET_SAVE TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f}"
-                    )
-                except Exception:
-                    gcode.run_script_from_command(
-                        f"SET_GCODE_OFFSET X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} MOVE=0"
-                    )
-
-                if ktc_tool_obj is not None:
-                    try:
-                        ktc_tool_obj.offset = [offset_x, offset_y, offset_z]
-                        ktc_tool_obj.persistent_state_set("offset", ktc_tool_obj.offset)
-                    except Exception:
-                        pass
-                
-                if save_vars:
-                    gcode.run_script_from_command(
-                        f'SAVE_VARIABLE VARIABLE={active_tool_name}_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
-                    )
+                ktc_tool_obj.offset = new_offset
+                ktc_tool_obj.persistent_state_set("offset", ktc_tool_obj.offset)
+                if hasattr(ktc, 'log') and ktc.log:
+                    ktc.log.always(f"Tool '{ktc_tool_obj.name}' offset set by 3-axis probe to: {ktc_tool_obj.offset}")
 
         target_descr = "GLOBAL offset" if is_global else f"tool '{active_tool_name}'"
         gcmd.respond_info(
