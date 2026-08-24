@@ -193,7 +193,11 @@ class ThreeAxisProbe:
         # Calculate offset-compensated safe approach positions
         target_x = self.fixed_x - existing_offset_x
         target_y = self.fixed_y - existing_offset_y
-        max_z = toolhead.get_status(None)['axis_maximum'][2]
+        cur_time = self.printer.get_reactor().monotonic()
+        try:
+            max_z = toolhead.get_status(cur_time)['axis_maximum'][2]
+        except Exception:
+            max_z = 999999.0
         safe_z = min(self.z_hop - existing_offset_z, max_z)
 
         # 1. Approach probe at safe Z, taking pre-existing offsets into account
@@ -337,7 +341,11 @@ class ThreeAxisProbe:
 
         target_x = self.fixed_x - existing_offset_x
         target_y = self.fixed_y - existing_offset_y
-        max_z = toolhead.get_status(None)['axis_maximum'][2]
+        cur_time = self.printer.get_reactor().monotonic()
+        try:
+            max_z = toolhead.get_status(cur_time)['axis_maximum'][2]
+        except Exception:
+            max_z = 999999.0
         safe_z = min(cur_pos[2] + self.z_hop, self.z_hop - existing_offset_z, max_z)
         
         toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
