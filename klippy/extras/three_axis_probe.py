@@ -197,24 +197,49 @@ class ThreeAxisProbe:
 
         is_global = (active_tool_name == "GLOBAL")
 
+        # Fetch pre-existing tool and global offsets if available
+        existing_offset_x = 0.0
+        existing_offset_y = 0.0
+        existing_offset_z = 0.0
+        if ktc is not None:
+            if hasattr(ktc, 'global_offset') and ktc.global_offset:
+                existing_offset_x += float(ktc.global_offset[0])
+                existing_offset_y += float(ktc.global_offset[1])
+                existing_offset_z += float(ktc.global_offset[2])
+            if ktc_tool_obj and hasattr(ktc_tool_obj, 'offset') and ktc_tool_obj.offset:
+                existing_offset_x += float(ktc_tool_obj.offset[0])
+                existing_offset_y += float(ktc_tool_obj.offset[1])
+                existing_offset_z += float(ktc_tool_obj.offset[2])
+
         cur_pos = toolhead.get_position()
         self.probe_status = "ALIGNING"
         self.last_tool_name = str(active_tool_name)
         
-        # 1. Approach probe at safe Z
-        toolhead.manual_move([cur_pos[0], cur_pos[1], self.z_hop], 50.0)
-        toolhead.manual_move([self.fixed_x, self.fixed_y, self.z_hop], 150.0)
+        # Calculate offset-compensated safe approach positions
+        target_x = self.fixed_x - existing_offset_x
+        target_y = self.fixed_y - existing_offset_y
+        max_z = toolhead.get_status(None)['axis_maximum'][2]
+        safe_z = min(self.z_hop - existing_offset_z, max_z)
+
+        # 1. Approach probe at safe Z, taking pre-existing offsets into account
+        toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
+        toolhead.manual_move([target_x, target_y, safe_z], 150.0)
         
         # 2. Probe Z-axis top apex
-        pos_z = self._probing_move(toolhead, [self.fixed_x, self.fixed_y, 0.0], speed)
-        z_apex = pos_z[2]
+        target_z_carriage = 0.0 - existing_offset_z
+        pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
+        z_apex = pos_z[2] + existing_offset_z
         
         # Move back up to safe height
-        toolhead.manual_move([self.fixed_x, self.fixed_y, self.z_hop], 50.0)
+        toolhead.manual_move([target_x, target_y, safe_z], 50.0)
         
         # 3. Perform 2-pass iterative X/Y probing at z_probe_depth below apex
-        xy_probe_z = z_apex + self.z_probe_depth
-        x_center, y_center = self._probe_2pass_center(toolhead, self.fixed_x, self.fixed_y, xy_probe_z, verbose, gcmd)
+        xy_probe_z = pos_z[2] + self.z_probe_depth
+        x_carriage_center, y_carriage_center = self._probe_2pass_center(
+            toolhead, target_x, target_y, xy_probe_z, verbose, gcmd
+        )
+        x_center = x_carriage_center + existing_offset_x
+        y_center = y_carriage_center + existing_offset_y
         
         # 4. Calculate relative offsets
         offset_x = round(x_center - self.fixed_x, 4)
@@ -258,7 +283,7 @@ class ThreeAxisProbe:
                 f"{self.on_align_gcode.strip()} TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} APEX={z_apex:.4f} X_CENTER={x_center:.4f} Y_CENTER={y_center:.4f}"
             )
         
-        toolhead.manual_move([x_center, y_center, self.z_hop], 50.0)
+        toolhead.manual_move([x_carriage_center, y_carriage_center, safe_z], 50.0)
 
     cmd_CHECK_FILAMENT_help = "Check hotend for stuck filament / blobs using 3-axis probe"
     def cmd_CHECK_FILAMENT(self, gcmd):
@@ -271,12 +296,34 @@ class ThreeAxisProbe:
         toolhead = self.printer.lookup_object('toolhead')
         cur_pos = toolhead.get_position()
         
-        safe_z = min(cur_pos[2] + self.z_hop, toolhead.get_status(None)['axis_maximum'][2])
-        toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
-        toolhead.manual_move([self.fixed_x, self.fixed_y, safe_z], 150.0)
+        # Fetch pre-existing tool and global offsets
+        existing_offset_x = 0.0
+        existing_offset_y = 0.0
+        existing_offset_z = 0.0
+        ktc = self.printer.lookup_object('ktc', None)
+        if ktc is not None:
+            if hasattr(ktc, 'global_offset') and ktc.global_offset:
+                existing_offset_x += float(ktc.global_offset[0])
+                existing_offset_y += float(ktc.global_offset[1])
+                existing_offset_z += float(ktc.global_offset[2])
+            if hasattr(ktc, 'active_tool') and ktc.active_tool not in getattr(ktc, 'INVALID_TOOLS', []):
+                tool_obj = ktc.active_tool
+                if hasattr(tool_obj, 'offset') and tool_obj.offset:
+                    existing_offset_x += float(tool_obj.offset[0])
+                    existing_offset_y += float(tool_obj.offset[1])
+                    existing_offset_z += float(tool_obj.offset[2])
+
+        target_x = self.fixed_x - existing_offset_x
+        target_y = self.fixed_y - existing_offset_y
+        max_z = toolhead.get_status(None)['axis_maximum'][2]
+        safe_z = min(cur_pos[2] + self.z_hop, self.z_hop - existing_offset_z, max_z)
         
-        pos_z = self._probing_move(toolhead, [self.fixed_x, self.fixed_y, 0.0], self.speed)
-        probed_z = pos_z[2]
+        toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
+        toolhead.manual_move([target_x, target_y, safe_z], 150.0)
+        
+        target_z_carriage = 0.0 - existing_offset_z
+        pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], self.speed)
+        probed_z = pos_z[2] + existing_offset_z
         
         self.last_probed_z = probed_z
         is_blob = probed_z > (self.z_expected + self.tolerance)
