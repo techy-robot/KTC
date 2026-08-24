@@ -98,38 +98,6 @@ class ThreeAxisProbe:
         state_str = "TRIGGERED (Contact Detected)" if triggered else "OPEN (No Contact)"
         gcmd.respond_info(f"3-Axis Probe '{self.name}' [{self.pin}] status: {state_str}")
 
-    cmd_PROBE_AXIS_help = "Probe a single specified axis (X, Y, or Z) for debugging & testing"
-    def cmd_PROBE_AXIS(self, gcmd):
-        axis = gcmd.get('AXIS', 'Z').upper()
-        if axis not in ['X', 'Y', 'Z']:
-            raise gcmd.error("Invalid AXIS parameter. Must be X, Y, or Z.")
-            
-        toolhead = self.printer.lookup_object('toolhead')
-        cur_pos = toolhead.get_position()
-        
-        speed = gcmd.get_float('SPEED', self.speed)
-        dist = gcmd.get_float('DISTANCE', self.search_dist)
-        direction = gcmd.get_float('DIRECTION', -1.0)
-        
-        target_pos = list(cur_pos)
-        axis_idx = {'X': 0, 'Y': 1, 'Z': 2}[axis]
-        
-        params = gcmd.get_command_parameters()
-        if 'TARGET' in params:
-            target_pos[axis_idx] = float(params['TARGET'])
-        else:
-            target_pos[axis_idx] = cur_pos[axis_idx] + (direction * dist)
-            
-        gcmd.respond_info(
-            f"3-Axis Probe '{self.name}': Probing {axis}-axis from {cur_pos[axis_idx]:.3f} "
-            f"towards {target_pos[axis_idx]:.3f} at speed {speed} mm/s..."
-        )
-        
-        end_pos = self._probing_move(toolhead, target_pos, speed)
-        gcmd.respond_info(
-            f"3-Axis Probe Triggered! Endpoint: X={end_pos[0]:.4f}, Y={end_pos[1]:.4f}, Z={end_pos[2]:.4f}"
-        )
-
     def _probe_2pass_center(self, toolhead, start_x, start_y, z_height, verbose=False, gcmd=None):
         """
         Iterative 2-Pass Probing on round probe geometry.
@@ -166,21 +134,62 @@ class ThreeAxisProbe:
             
         return x_center, y_center
 
-    cmd_ALIGN_TOOL_help = "Align active toolhead in X, Y, Z using 3-axis probe"
+    cmd_ALIGN_TOOL_help = (
+        "Align toolhead offsets (X, Y, Z or ALL) using 3-axis probe.\n"
+        "Parameters: [AXIS=ALL|X|Y|Z] [TOOL=<name>] [SPEED=<val>] [DISTANCE=<val>] "
+        "[DIRECTION=1|-1] [TARGET=<val>] [VERBOSE=0|1] [SAVE=0|1]"
+    )
     def cmd_ALIGN_TOOL(self, gcmd):
+        axis = gcmd.get('AXIS', 'ALL').upper()
+        if axis not in ['ALL', 'X', 'Y', 'Z']:
+            raise gcmd.error("Invalid AXIS parameter. Must be ALL, X, Y, or Z.")
+
         toolhead = self.printer.lookup_object('toolhead')
+        speed = gcmd.get_float('SPEED', self.speed)
+        dist = gcmd.get_float('DISTANCE', self.search_dist)
+        verbose = gcmd.get_int('VERBOSE', 0) == 1 or self.debug
+
+        # Single axis probe mode
+        if axis in ['X', 'Y', 'Z']:
+            cur_pos = toolhead.get_position()
+            direction = gcmd.get_float('DIRECTION', -1.0)
+            target_pos = list(cur_pos)
+            axis_idx = {'X': 0, 'Y': 1, 'Z': 2}[axis]
+            
+            params = gcmd.get_command_parameters()
+            if 'TARGET' in params:
+                target_pos[axis_idx] = float(params['TARGET'])
+            else:
+                target_pos[axis_idx] = cur_pos[axis_idx] + (direction * dist)
+                
+            gcmd.respond_info(
+                f"3-Axis Probe '{self.name}': Probing {axis}-axis from {cur_pos[axis_idx]:.3f} "
+                f"towards {target_pos[axis_idx]:.3f} at speed {speed} mm/s..."
+            )
+            
+            end_pos = self._probing_move(toolhead, target_pos, speed)
+            gcmd.respond_info(
+                f"3-Axis Probe Triggered! Endpoint: X={end_pos[0]:.4f}, Y={end_pos[1]:.4f}, Z={end_pos[2]:.4f}"
+            )
+            return
+
+        # Full 3D Tool Alignment mode (AXIS=ALL)
         save_vars = self.printer.lookup_object('save_variables', None)
         ktc = self.printer.lookup_object('ktc', None)
-        verbose = gcmd.get_int('VERBOSE', 0) == 1 or self.debug
-        
-        # Identify active tool from KTC first, fallback to save_variables
-        active_tool_name = None
+        should_save = gcmd.get_int('SAVE', 1) == 1
+
+        # Identify active tool from KTC first, fallback to save_variables or explicit TOOL argument
+        active_tool_name = gcmd.get('TOOL', None)
         ktc_tool_obj = None
-        
-        if ktc is not None and hasattr(ktc, 'active_tool') and ktc.active_tool not in getattr(ktc, 'INVALID_TOOLS', []):
-            ktc_tool_obj = ktc.active_tool
-            active_tool_name = ktc_tool_obj.name
-        elif save_vars:
+
+        if not active_tool_name and ktc is not None:
+            if hasattr(ktc, 'active_tool') and ktc.active_tool not in getattr(ktc, 'INVALID_TOOLS', []):
+                ktc_tool_obj = ktc.active_tool
+                active_tool_name = ktc_tool_obj.name
+        elif active_tool_name and ktc is not None:
+            ktc_tool_obj = ktc.all_tools.get(str(active_tool_name), None)
+
+        if not active_tool_name and save_vars:
             active_tool_name = save_vars.allVariables.get("active_tool", "tool_none")
 
         if not active_tool_name or active_tool_name in ["tool_none", "", "-1", "UNKNOWN"]:
@@ -195,7 +204,7 @@ class ThreeAxisProbe:
         toolhead.manual_move([self.fixed_x, self.fixed_y, self.z_hop], 150.0)
         
         # 2. Probe Z-axis top apex
-        pos_z = self._probing_move(toolhead, [self.fixed_x, self.fixed_y, 0.0], self.speed)
+        pos_z = self._probing_move(toolhead, [self.fixed_x, self.fixed_y, 0.0], speed)
         z_apex = pos_z[2]
         
         # Move back up to safe height
@@ -219,28 +228,29 @@ class ThreeAxisProbe:
         self.probe_status = "ALIGNED"
         
         # 5. Apply & save tool offset for TypQxQ/KTC (Klipper ToolChanger)
-        gcode = self.printer.lookup_object('gcode')
-        try:
-            gcode.run_script_from_command(
-                f"KTC_TOOL_OFFSET_SAVE TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f}"
-            )
-        except Exception:
-            # Fallback if KTC command is not loaded
-            gcode.run_script_from_command(
-                f"SET_GCODE_OFFSET X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} MOVE=0"
-            )
-
-        if ktc_tool_obj is not None:
+        if should_save:
+            gcode = self.printer.lookup_object('gcode')
             try:
-                ktc_tool_obj.offset = [offset_x, offset_y, offset_z]
-                ktc_tool_obj.persistent_state_set("offset", ktc_tool_obj.offset)
+                gcode.run_script_from_command(
+                    f"KTC_TOOL_OFFSET_SAVE TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f}"
+                )
             except Exception:
-                pass
-        
-        if save_vars:
-            gcode.run_script_from_command(
-                f'SAVE_VARIABLE VARIABLE={active_tool_name}_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
-            )
+                # Fallback if KTC command is not loaded
+                gcode.run_script_from_command(
+                    f"SET_GCODE_OFFSET X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} MOVE=0"
+                )
+
+            if ktc_tool_obj is not None:
+                try:
+                    ktc_tool_obj.offset = [offset_x, offset_y, offset_z]
+                    ktc_tool_obj.persistent_state_set("offset", ktc_tool_obj.offset)
+                except Exception:
+                    pass
+            
+            if save_vars:
+                gcode.run_script_from_command(
+                    f'SAVE_VARIABLE VARIABLE={active_tool_name}_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
+                )
 
         gcmd.respond_info(
             f"3-Axis Probe alignment complete for tool '{active_tool_name}':\n"
@@ -251,6 +261,7 @@ class ThreeAxisProbe:
 
         # 6. Configured custom macro callback execution
         if self.on_align_gcode.strip():
+            gcode = self.printer.lookup_object('gcode')
             gcode.run_script_from_command(
                 f"{self.on_align_gcode.strip()} TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} APEX={z_apex:.4f} X_CENTER={x_center:.4f} Y_CENTER={y_center:.4f}"
             )

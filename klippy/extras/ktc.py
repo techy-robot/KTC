@@ -142,7 +142,6 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_DEBUG_TOOLS",
             "KTC_THREE_AXIS_ALIGN",
             "KTC_PROBE_3AXIS_ALIGN",
-            "KTC_PROBE_3AXIS_AXIS",
             "KTC_QUERY_THREE_AXIS_PROBE",
             "KTC_PROBE_3AXIS_CHECK_FILAMENT",
         ]
@@ -867,20 +866,10 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         probe.cmd_ALIGN_TOOL(gcmd)
 
     cmd_KTC_PROBE_3AXIS_ALIGN_help = (
-        "Align active tool using 3-axis probe (Nudge probe)."
+        "Align toolhead offsets (X, Y, Z or ALL) using 3-axis probe.\n"
+        "Parameters: [AXIS=ALL|X|Y|Z] [TOOL=<name>] [SPEED=<val>] [DISTANCE=<val>] "
+        "[DIRECTION=1|-1] [TARGET=<val>] [VERBOSE=0|1] [SAVE=0|1]"
     )
-
-    def cmd_KTC_PROBE_3AXIS_ALIGN(self, gcmd):
-        probe = self._get_three_axis_probe(gcmd)
-        probe.cmd_ALIGN_TOOL(gcmd)
-
-    cmd_KTC_PROBE_3AXIS_AXIS_help = (
-        "Perform a single axis probe move."
-    )
-
-    def cmd_KTC_PROBE_3AXIS_AXIS(self, gcmd):
-        probe = self._get_three_axis_probe(gcmd)
-        probe.cmd_PROBE_AXIS(gcmd)
 
     cmd_KTC_QUERY_THREE_AXIS_PROBE_help = (
         "Query 3-axis probe state."
