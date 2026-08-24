@@ -22,7 +22,7 @@
   ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) 3-Axis Probe Commands (Added by Asher Edwards)
   | Command | Description | 
   | ------- | ----------- |
-  | `KTC_3AXIS_PROBE_ALIGN` `[AXIS=ALL|X|Y|Z] [TOOL=<name>] [SPEED=<val>] [DISTANCE=<val>] [DIRECTION=1|-1] [TARGET=<val>] [VERBOSE=0|1] [SAVE=0|1]` | Execute 3D tool alignment (`AXIS=ALL`) or single-axis probe move (`AXIS=X|Y|Z`). Saves calculated X, Y, Z offsets to KTC (`SAVE=1`) and triggers `on_align_gcode` macro. |
+  | `KTC_3AXIS_PROBE_ALIGN` `[AXIS=ALL|X|Y|Z] [TOOL=<name>|global] [SPEED=<val>] [DISTANCE=<val>] [DIRECTION=1|-1] [TARGET=<val>] [VERBOSE=0|1] [SAVE=0|1]` | Execute 3D tool alignment (`AXIS=ALL`) or single-axis probe move (`AXIS=X|Y|Z`). Saves calculated X, Y, Z offsets to specified tool, active tool, or as global offset (if `TOOL=global` or no tool active). Triggers `on_align_gcode` macro. |
   | `KTC_3AXIS_PROBE_QUERY` | Query the manual trigger state of the 3-axis 1-break switch input. |
   | `KTC_3AXIS_PROBE_CHECK_FILAMENT` `LAYER=<num> [INTERVAL=<num>]` | Probe hotend Z apex during print execution to detect stuck filament or nozzle blobs. Triggers `on_blob_detected_gcode` macro if configured in `[three_axis_probe]`. |
   <br>

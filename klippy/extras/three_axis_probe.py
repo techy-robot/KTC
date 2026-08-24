@@ -178,22 +178,29 @@ class ThreeAxisProbe:
         ktc = self.printer.lookup_object('ktc', None)
         should_save = gcmd.get_int('SAVE', 1) == 1
 
-        # Identify active tool from KTC first, fallback to save_variables or explicit TOOL argument
-        active_tool_name = gcmd.get('TOOL', None)
+        # Identify target tool: explicit TOOL parameter, active KTC tool, or GLOBAL
+        tool_param = gcmd.get('TOOL', None)
+        active_tool_name = None
         ktc_tool_obj = None
 
-        if not active_tool_name and ktc is not None:
+        if tool_param and str(tool_param).lower() not in ["global", "none"]:
+            active_tool_name = str(tool_param)
+            if ktc is not None:
+                ktc_tool_obj = ktc.all_tools.get(active_tool_name, None)
+        elif not tool_param and ktc is not None:
             if hasattr(ktc, 'active_tool') and ktc.active_tool not in getattr(ktc, 'INVALID_TOOLS', []):
                 ktc_tool_obj = ktc.active_tool
                 active_tool_name = ktc_tool_obj.name
-        elif active_tool_name and ktc is not None:
-            ktc_tool_obj = ktc.all_tools.get(str(active_tool_name), None)
+        elif not tool_param and save_vars:
+            val = save_vars.allVariables.get("active_tool", "tool_none")
+            if val not in ["tool_none", "", "-1", "UNKNOWN"]:
+                active_tool_name = val
 
-        if not active_tool_name and save_vars:
-            active_tool_name = save_vars.allVariables.get("active_tool", "tool_none")
-
+        # If no tool is specified or active, target is GLOBAL
         if not active_tool_name or active_tool_name in ["tool_none", "", "-1", "UNKNOWN"]:
-            raise gcmd.error("3-AXIS ALIGN FAILED: No active KTC tool selected!")
+            active_tool_name = "GLOBAL"
+
+        is_global = (active_tool_name == "GLOBAL")
 
         cur_pos = toolhead.get_position()
         self.probe_status = "ALIGNING"
@@ -227,33 +234,55 @@ class ThreeAxisProbe:
         self.last_y_center = y_center
         self.probe_status = "ALIGNED"
         
-        # 5. Apply & save tool offset for TypQxQ/KTC (Klipper ToolChanger)
+        # 5. Apply & save offset (Global or Tool)
         if should_save:
             gcode = self.printer.lookup_object('gcode')
-            try:
-                gcode.run_script_from_command(
-                    f"KTC_TOOL_OFFSET_SAVE TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f}"
-                )
-            except Exception:
-                # Fallback if KTC command is not loaded
-                gcode.run_script_from_command(
-                    f"SET_GCODE_OFFSET X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} MOVE=0"
-                )
-
-            if ktc_tool_obj is not None:
+            if is_global:
                 try:
-                    ktc_tool_obj.offset = [offset_x, offset_y, offset_z]
-                    ktc_tool_obj.persistent_state_set("offset", ktc_tool_obj.offset)
+                    gcode.run_script_from_command(
+                        f"KTC_GLOBAL_OFFSET_SAVE X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f}"
+                    )
                 except Exception:
-                    pass
-            
-            if save_vars:
-                gcode.run_script_from_command(
-                    f'SAVE_VARIABLE VARIABLE={active_tool_name}_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
-                )
+                    gcode.run_script_from_command(
+                        f"SET_GCODE_OFFSET X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} MOVE=0"
+                    )
 
+                if ktc is not None:
+                    try:
+                        ktc.global_offset = [offset_x, offset_y, offset_z]
+                        ktc.persistent_state_set("global_offset", ktc.global_offset)
+                    except Exception:
+                        pass
+
+                if save_vars:
+                    gcode.run_script_from_command(
+                        f'SAVE_VARIABLE VARIABLE=global_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
+                    )
+            else:
+                try:
+                    gcode.run_script_from_command(
+                        f"KTC_TOOL_OFFSET_SAVE TOOL={active_tool_name} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f}"
+                    )
+                except Exception:
+                    gcode.run_script_from_command(
+                        f"SET_GCODE_OFFSET X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} MOVE=0"
+                    )
+
+                if ktc_tool_obj is not None:
+                    try:
+                        ktc_tool_obj.offset = [offset_x, offset_y, offset_z]
+                        ktc_tool_obj.persistent_state_set("offset", ktc_tool_obj.offset)
+                    except Exception:
+                        pass
+                
+                if save_vars:
+                    gcode.run_script_from_command(
+                        f'SAVE_VARIABLE VARIABLE={active_tool_name}_probe_3axis_offset VALUE="{offset_x:.4f},{offset_y:.4f},{offset_z:.4f}"'
+                    )
+
+        target_descr = "GLOBAL offset" if is_global else f"tool '{active_tool_name}'"
         gcmd.respond_info(
-            f"3-Axis Probe alignment complete for tool '{active_tool_name}':\n"
+            f"3-Axis Probe alignment complete for {target_descr}:\n"
             f"  X_center={x_center:.4f} mm (Offset X={offset_x:.4f} mm)\n"
             f"  Y_center={y_center:.4f} mm (Offset Y={offset_y:.4f} mm)\n"
             f"  Z_apex  ={z_apex:.4f} mm (Offset Z={offset_z:.4f} mm)"
