@@ -129,7 +129,7 @@ class ThreeAxisProbe:
             pos_y1 = self._probing_move(toolhead, [x_center, y_center - self.search_dist, z_height], self.speed)
             
             toolhead.manual_move([x_center, y_center - self.search_dist, z_height], 50.0)
-            pos_y2 = self._probing_move(toolhead, [x_center + self.search_dist, y_center, z_height], self.speed)
+            pos_y2 = self._probing_move(toolhead, [x_center, y_center + self.search_dist, z_height], self.speed)
             
             y_center = (pos_y1[1] + pos_y2[1]) / 2.0
             
@@ -208,8 +208,8 @@ class ThreeAxisProbe:
         toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
         toolhead.manual_move([target_x, target_y, safe_z], 150.0)
         
-        # 2. Probe Z-axis top apex
-        target_z_carriage = 0.0 - existing_offset_z
+        # 2. Probe Z-axis top apex (target extends past z_expected by search_dist)
+        target_z_carriage = (self.z_expected - existing_offset_z) - dist
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
         z_apex = pos_z[2] + existing_offset_z
         offset_z = round(z_apex - self.z_expected, 4)
@@ -355,7 +355,7 @@ class ThreeAxisProbe:
         toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
         toolhead.manual_move([target_x, target_y, safe_z], 150.0)
         
-        target_z_carriage = 0.0 - existing_offset_z
+        target_z_carriage = (self.z_expected - existing_offset_z) - self.search_dist
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], self.speed)
         probed_z = pos_z[2] + existing_offset_z
         
