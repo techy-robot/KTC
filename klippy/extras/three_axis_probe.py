@@ -102,7 +102,7 @@ class ThreeAxisProbe:
         state_str = "TRIGGERED (Contact Detected)" if triggered else "OPEN (No Contact)"
         gcmd.respond_info(f"3-Axis Probe '{self.name}' [{self.pin}] status: {state_str}")
 
-    def _probe_2pass_center(self, toolhead, start_x, start_y, safe_z, z_height, verbose=False, gcmd=None):
+    def _probe_2pass_center(self, toolhead, start_x, start_y, approach_z, z_height, verbose=False, gcmd=None):
         """
         Iterative 2-Pass Probing on round probe geometry.
         Pass 1 finds approximate center; Pass 2 probes at exact orthogonal apex 
@@ -116,30 +116,30 @@ class ThreeAxisProbe:
                 gcmd.respond_info(f"--- Probing Pass {pass_num} (Center estimate: X={x_center:.3f}, Y={y_center:.3f}) ---")
                 
             # Probe X+ (towards X-)
-            toolhead.manual_move([x_center + self.search_dist, y_center, safe_z], 150.0)
+            toolhead.manual_move([x_center + self.search_dist, y_center, approach_z], 150.0)
             toolhead.manual_move([x_center + self.search_dist, y_center, z_height], 50.0)
             pos_x1 = self._probing_move(toolhead, [x_center - self.search_dist, y_center, z_height], self.speed)
-            toolhead.manual_move([pos_x1[0], pos_x1[1], safe_z], 50.0)
+            toolhead.manual_move([pos_x1[0], pos_x1[1], approach_z], 50.0)
             
             # Probe X- (towards X+)
-            toolhead.manual_move([x_center - self.search_dist, y_center, safe_z], 150.0)
+            toolhead.manual_move([x_center - self.search_dist, y_center, approach_z], 150.0)
             toolhead.manual_move([x_center - self.search_dist, y_center, z_height], 50.0)
             pos_x2 = self._probing_move(toolhead, [x_center + self.search_dist, y_center, z_height], self.speed)
-            toolhead.manual_move([pos_x2[0], pos_x2[1], safe_z], 50.0)
+            toolhead.manual_move([pos_x2[0], pos_x2[1], approach_z], 50.0)
             
             x_center = (pos_x1[0] + pos_x2[0]) / 2.0
             
             # Probe Y+ (towards Y-)
-            toolhead.manual_move([x_center, y_center + self.search_dist, safe_z], 150.0)
+            toolhead.manual_move([x_center, y_center + self.search_dist, approach_z], 150.0)
             toolhead.manual_move([x_center, y_center + self.search_dist, z_height], 50.0)
             pos_y1 = self._probing_move(toolhead, [x_center, y_center - self.search_dist, z_height], self.speed)
-            toolhead.manual_move([pos_y1[0], pos_y1[1], safe_z], 50.0)
+            toolhead.manual_move([pos_y1[0], pos_y1[1], approach_z], 50.0)
             
             # Probe Y- (towards Y+)
-            toolhead.manual_move([x_center, y_center - self.search_dist, safe_z], 150.0)
+            toolhead.manual_move([x_center, y_center - self.search_dist, approach_z], 150.0)
             toolhead.manual_move([x_center, y_center - self.search_dist, z_height], 50.0)
             pos_y2 = self._probing_move(toolhead, [x_center, y_center + self.search_dist, z_height], self.speed)
-            toolhead.manual_move([pos_y2[0], pos_y2[1], safe_z], 50.0)
+            toolhead.manual_move([pos_y2[0], pos_y2[1], approach_z], 50.0)
             
             y_center = (pos_y1[1] + pos_y2[1]) / 2.0
             
@@ -212,14 +212,16 @@ class ThreeAxisProbe:
             max_z = toolhead.get_status(cur_time)['axis_maximum'][2]
         except Exception:
             max_z = 999999.0
-        safe_z = max(self.z_hop, self.z_hop - existing_offset_z, cur_pos[2])
-        safe_z = min(safe_z, max_z)
 
-        # 1. Approach probe at safe Z, taking pre-existing offsets into account
-        toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
-        toolhead.manual_move([target_x, target_y, safe_z], 150.0)
+        lift_z = min(max(cur_pos[2], self.z_hop, (self.z_expected - existing_offset_z) + self.z_hop), max_z)
+        approach_z = min((self.z_expected - existing_offset_z) + self.z_hop, max_z)
+
+        # 1. Approach probe location (high-speed travel at lift_z, then fast Z descent to approach_z)
+        toolhead.manual_move([cur_pos[0], cur_pos[1], lift_z], 50.0)
+        toolhead.manual_move([target_x, target_y, lift_z], 150.0)
+        toolhead.manual_move([target_x, target_y, approach_z], 50.0)
         
-        # 2. Probe Z-axis top apex (target extends past z_expected by search_dist)
+        # 2. Probe Z-axis top apex (slow probing move from approach_z down past z_expected by dist)
         target_z_carriage = (self.z_expected - existing_offset_z) - dist
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
         z_apex = pos_z[2] + existing_offset_z
@@ -228,8 +230,8 @@ class ThreeAxisProbe:
         self.last_z_apex = z_apex
         self.last_offset_z = offset_z
         
-        # Move back up to safe height
-        toolhead.manual_move([target_x, target_y, safe_z], 50.0)
+        # Fast return to approach clearance height
+        toolhead.manual_move([target_x, target_y, approach_z], 50.0)
 
         x_carriage_center = target_x
         y_carriage_center = target_y
@@ -243,7 +245,7 @@ class ThreeAxisProbe:
         # 3. Perform probing moves depending on requested AXIS
         if axis == 'ALL':
             x_carriage_center, y_carriage_center = self._probe_2pass_center(
-                toolhead, target_x, target_y, safe_z, xy_probe_z, verbose, gcmd
+                toolhead, target_x, target_y, approach_z, xy_probe_z, verbose, gcmd
             )
             x_center = x_carriage_center + existing_offset_x
             y_center = y_carriage_center + existing_offset_y
@@ -255,15 +257,15 @@ class ThreeAxisProbe:
             self.last_y_center = y_center
 
         elif axis == 'X':
-            toolhead.manual_move([target_x + dist, target_y, safe_z], 150.0)
+            toolhead.manual_move([target_x + dist, target_y, approach_z], 150.0)
             toolhead.manual_move([target_x + dist, target_y, xy_probe_z], 50.0)
             pos_x1 = self._probing_move(toolhead, [target_x - dist, target_y, xy_probe_z], speed)
-            toolhead.manual_move([pos_x1[0], pos_x1[1], safe_z], 50.0)
+            toolhead.manual_move([pos_x1[0], pos_x1[1], approach_z], 50.0)
 
-            toolhead.manual_move([target_x - dist, target_y, safe_z], 150.0)
+            toolhead.manual_move([target_x - dist, target_y, approach_z], 150.0)
             toolhead.manual_move([target_x - dist, target_y, xy_probe_z], 50.0)
             pos_x2 = self._probing_move(toolhead, [target_x + dist, target_y, xy_probe_z], speed)
-            toolhead.manual_move([pos_x2[0], pos_x2[1], safe_z], 50.0)
+            toolhead.manual_move([pos_x2[0], pos_x2[1], approach_z], 50.0)
 
             x_carriage_center = (pos_x1[0] + pos_x2[0]) / 2.0
             x_center = x_carriage_center + existing_offset_x
@@ -272,15 +274,15 @@ class ThreeAxisProbe:
             self.last_x_center = x_center
 
         elif axis == 'Y':
-            toolhead.manual_move([target_x, target_y + dist, safe_z], 150.0)
+            toolhead.manual_move([target_x, target_y + dist, approach_z], 150.0)
             toolhead.manual_move([target_x, target_y + dist, xy_probe_z], 50.0)
             pos_y1 = self._probing_move(toolhead, [target_x, target_y - dist, xy_probe_z], speed)
-            toolhead.manual_move([pos_y1[0], pos_y1[1], safe_z], 50.0)
+            toolhead.manual_move([pos_y1[0], pos_y1[1], approach_z], 50.0)
 
-            toolhead.manual_move([target_x, target_y - dist, safe_z], 150.0)
+            toolhead.manual_move([target_x, target_y - dist, approach_z], 150.0)
             toolhead.manual_move([target_x, target_y - dist, xy_probe_z], 50.0)
             pos_y2 = self._probing_move(toolhead, [target_x, target_y + dist, xy_probe_z], speed)
-            toolhead.manual_move([pos_y2[0], pos_y2[1], safe_z], 50.0)
+            toolhead.manual_move([pos_y2[0], pos_y2[1], approach_z], 50.0)
 
             y_carriage_center = (pos_y1[1] + pos_y2[1]) / 2.0
             y_center = y_carriage_center + existing_offset_y
@@ -332,7 +334,7 @@ class ThreeAxisProbe:
                 f"{self.on_align_gcode.strip()} TOOL={active_tool_name} AXIS={axis} X={offset_x:.4f} Y={offset_y:.4f} Z={offset_z:.4f} APEX={z_apex:.4f} X_CENTER={x_center:.4f} Y_CENTER={y_center:.4f}"
             )
         
-        toolhead.manual_move([x_carriage_center, y_carriage_center, safe_z], 50.0)
+        toolhead.manual_move([x_carriage_center, y_carriage_center, approach_z], 50.0)
 
     cmd_CHECK_FILAMENT_help = "Check hotend for stuck filament / blobs using 3-axis probe"
     def cmd_CHECK_FILAMENT(self, gcmd):
@@ -369,11 +371,13 @@ class ThreeAxisProbe:
             max_z = toolhead.get_status(cur_time)['axis_maximum'][2]
         except Exception:
             max_z = 999999.0
-        safe_z = max(self.z_hop, self.z_hop - existing_offset_z, cur_pos[2] + self.z_hop)
-        safe_z = min(safe_z, max_z)
+
+        lift_z = min(max(cur_pos[2], cur_pos[2] + self.z_hop), max_z)
+        approach_z = min((self.z_expected - existing_offset_z) + self.z_hop, max_z)
         
-        toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
-        toolhead.manual_move([target_x, target_y, safe_z], 150.0)
+        toolhead.manual_move([cur_pos[0], cur_pos[1], lift_z], 50.0)
+        toolhead.manual_move([target_x, target_y, lift_z], 150.0)
+        toolhead.manual_move([target_x, target_y, approach_z], 50.0)
         
         target_z_carriage = (self.z_expected - existing_offset_z) - self.search_dist
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], self.speed)
@@ -399,7 +403,7 @@ class ThreeAxisProbe:
         else:
             gcmd.respond_info(f"3-Axis Probe blob check passed at layer {layer} (Probed Z: {probed_z:.3f}mm)")
             
-        toolhead.manual_move([cur_pos[0], cur_pos[1], safe_z], 50.0)
+        toolhead.manual_move([cur_pos[0], cur_pos[1], approach_z], 50.0)
         toolhead.manual_move(cur_pos, 50.0)
 
 def load_config(config):
