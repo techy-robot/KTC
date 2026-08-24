@@ -140,10 +140,9 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_TOOL_MAP_NR",
             "KTC_DEBUG_HEATERS",
             "KTC_DEBUG_TOOLS",
-            "KTC_THREE_AXIS_ALIGN",
-            "KTC_PROBE_3AXIS_ALIGN",
-            "KTC_QUERY_THREE_AXIS_PROBE",
-            "KTC_PROBE_3AXIS_CHECK_FILAMENT",
+            "KTC_3AXIS_PROBE_ALIGN",
+            "KTC_3AXIS_PROBE_QUERY",
+            "KTC_3AXIS_PROBE_CHECK_FILAMENT",
         ]
         for cmd in handlers:
             func = getattr(self, "cmd_" + cmd)
@@ -857,33 +856,29 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             raise gcmd.error("No [three_axis_probe] module loaded in config!")
         return probe
 
-    cmd_KTC_THREE_AXIS_ALIGN_help = (
-        "Align active tool using 3-axis probe (Nudge probe)."
-    )
-
-    def cmd_KTC_THREE_AXIS_ALIGN(self, gcmd):
-        probe = self._get_three_axis_probe(gcmd)
-        probe.cmd_ALIGN_TOOL(gcmd)
-
-    cmd_KTC_PROBE_3AXIS_ALIGN_help = (
+    cmd_KTC_3AXIS_PROBE_ALIGN_help = (
         "Align toolhead offsets (X, Y, Z or ALL) using 3-axis probe.\n"
         "Parameters: [AXIS=ALL|X|Y|Z] [TOOL=<name>] [SPEED=<val>] [DISTANCE=<val>] "
         "[DIRECTION=1|-1] [TARGET=<val>] [VERBOSE=0|1] [SAVE=0|1]"
     )
 
-    cmd_KTC_QUERY_THREE_AXIS_PROBE_help = (
-        "Query 3-axis probe state."
+    def cmd_KTC_3AXIS_PROBE_ALIGN(self, gcmd):
+        probe = self._get_three_axis_probe(gcmd)
+        probe.cmd_ALIGN_TOOL(gcmd)
+
+    cmd_KTC_3AXIS_PROBE_QUERY_help = (
+        "Query 3-axis probe trigger state."
     )
 
-    def cmd_KTC_QUERY_THREE_AXIS_PROBE(self, gcmd):
+    def cmd_KTC_3AXIS_PROBE_QUERY(self, gcmd):
         probe = self._get_three_axis_probe(gcmd)
         probe.cmd_QUERY_PROBE(gcmd)
 
-    cmd_KTC_PROBE_3AXIS_CHECK_FILAMENT_help = (
+    cmd_KTC_3AXIS_PROBE_CHECK_FILAMENT_help = (
         "Check for blob / stuck filament using 3-axis probe."
     )
 
-    def cmd_KTC_PROBE_3AXIS_CHECK_FILAMENT(self, gcmd):
+    def cmd_KTC_3AXIS_PROBE_CHECK_FILAMENT(self, gcmd):
         probe = self._get_three_axis_probe(gcmd)
         probe.cmd_CHECK_FILAMENT(gcmd)
 
