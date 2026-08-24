@@ -73,6 +73,7 @@ class ThreeAxisProbe:
 
     def _probing_move(self, toolhead, target_pos, speed):
         """Execute a probing move stopping on mcu_endstop trigger."""
+        toolhead.wait_moves()
         homing = self.printer.lookup_object('homing')
         
         # Ensure kinematics steppers are registered with the probe endstop
