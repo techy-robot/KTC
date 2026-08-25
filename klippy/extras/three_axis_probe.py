@@ -214,23 +214,26 @@ class ThreeAxisProbe:
         except Exception:
             max_z = 999999.0
 
-        lift_z = min(max(cur_pos[2], self.z_hop, (self.z_expected - existing_offset_z) + self.z_hop), max_z)
+        lift_z = min(max(cur_pos[2], self.z_hop), max_z)
         
         # 1. Move XY over probe at safe high altitude
         toolhead.manual_move([cur_pos[0], cur_pos[1], lift_z], 50.0)
         toolhead.manual_move([target_x, target_y, lift_z], 150.0)
+        toolhead.wait_moves()
         
-        # 2. Probe Z-axis top apex
+        # 2. Probe Z-axis top apex (2-Pass System: Pass 1 Fast Search, Pass 2 Precision Measure)
         target_z_carriage = (self.z_expected - existing_offset_z) - dist
-        fast_speed = max(speed * 6.0, 15.0)
+        fast_speed = max(speed * 5.0, 15.0)
 
-        # Stage 1: Fast search probe down from lift_z (stops immediately on contact)
-        if lift_z > (self.z_expected - existing_offset_z) + self.z_hop + 2.0:
-            pos_z_fast = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], fast_speed)
-            safe_z = min(pos_z_fast[2] + self.z_hop, max_z)
-            toolhead.manual_move([target_x, target_y, safe_z], 50.0)
+        # Pass 1: Fast search probe down from lift_z (stops instantly on contact)
+        pos_z_fast = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], fast_speed)
+        
+        # Retract 1: Lift Z up by z_hop above fast-probed apex
+        safe_z = min(pos_z_fast[2] + self.z_hop, max_z)
+        toolhead.manual_move([target_x, target_y, safe_z], 50.0)
+        toolhead.wait_moves()
 
-        # Stage 2: Precision Z probe move at configured slow speed
+        # Pass 2: Fine precision Z probe at configured slow speed over just z_hop distance
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
         z_apex = pos_z[2] + existing_offset_z
         offset_z = round(z_apex - self.z_expected, 4)
@@ -238,9 +241,10 @@ class ThreeAxisProbe:
         self.last_z_apex = z_apex
         self.last_offset_z = offset_z
         
-        # Retract to safe height exactly z_hop above the real probed apex
+        # Retract 2: Lift Z up by z_hop above the final precision-probed apex
         safe_z = min(pos_z[2] + self.z_hop, max_z)
         toolhead.manual_move([target_x, target_y, safe_z], 50.0)
+        toolhead.wait_moves()
 
         x_carriage_center = target_x
         y_carriage_center = target_y
