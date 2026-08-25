@@ -114,38 +114,62 @@ class ThreeAxisProbe:
         
         for pass_num in range(1, 3):
             if verbose and gcmd:
-                gcmd.respond_info(f"--- Probing Pass {pass_num} (Center estimate: X={x_center:.3f}, Y={y_center:.3f}) ---")
+                gcmd.respond_info(f"[3-Axis Probe] --- Pass {pass_num} (Center estimate: X={x_center:.3f}, Y={y_center:.3f}) ---")
                 
             # Probe X+ (towards X-)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: Probing X+ side at Z={z_height:.3f} mm...")
             toolhead.manual_move([x_center + self.search_dist, y_center, safe_z], 150.0)
             toolhead.manual_move([x_center + self.search_dist, y_center, z_height], 50.0)
+            toolhead.wait_moves()
             pos_x1 = self._probing_move(toolhead, [x_center - self.search_dist, y_center, z_height], self.speed)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: X+ triggered at X={pos_x1[0]:.4f} mm")
             toolhead.manual_move([pos_x1[0], pos_x1[1], safe_z], 50.0)
+            toolhead.wait_moves()
             
             # Probe X- (towards X+)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: Probing X- side at Z={z_height:.3f} mm...")
             toolhead.manual_move([x_center - self.search_dist, y_center, safe_z], 150.0)
             toolhead.manual_move([x_center - self.search_dist, y_center, z_height], 50.0)
+            toolhead.wait_moves()
             pos_x2 = self._probing_move(toolhead, [x_center + self.search_dist, y_center, z_height], self.speed)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: X- triggered at X={pos_x2[0]:.4f} mm")
             toolhead.manual_move([pos_x2[0], pos_x2[1], safe_z], 50.0)
+            toolhead.wait_moves()
             
             x_center = (pos_x1[0] + pos_x2[0]) / 2.0
             
             # Probe Y+ (towards Y-)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: Probing Y+ side at Z={z_height:.3f} mm...")
             toolhead.manual_move([x_center, y_center + self.search_dist, safe_z], 150.0)
             toolhead.manual_move([x_center, y_center + self.search_dist, z_height], 50.0)
+            toolhead.wait_moves()
             pos_y1 = self._probing_move(toolhead, [x_center, y_center - self.search_dist, z_height], self.speed)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: Y+ triggered at Y={pos_y1[1]:.4f} mm")
             toolhead.manual_move([pos_y1[0], pos_y1[1], safe_z], 50.0)
+            toolhead.wait_moves()
             
             # Probe Y- (towards Y+)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: Probing Y- side at Z={z_height:.3f} mm...")
             toolhead.manual_move([x_center, y_center - self.search_dist, safe_z], 150.0)
             toolhead.manual_move([x_center, y_center - self.search_dist, z_height], 50.0)
+            toolhead.wait_moves()
             pos_y2 = self._probing_move(toolhead, [x_center, y_center + self.search_dist, z_height], self.speed)
+            if verbose and gcmd:
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num}: Y- triggered at Y={pos_y2[1]:.4f} mm")
             toolhead.manual_move([pos_y2[0], pos_y2[1], safe_z], 50.0)
+            toolhead.wait_moves()
             
             y_center = (pos_y1[1] + pos_y2[1]) / 2.0
             
             if verbose and gcmd:
-                gcmd.respond_info(f"Pass {pass_num} calculated center: X={x_center:.4f}, Y={y_center:.4f}")
+                gcmd.respond_info(f"[3-Axis Probe] Pass {pass_num} calculated center: X={x_center:.4f}, Y={y_center:.4f}")
             
         return x_center, y_center
 
@@ -216,7 +240,16 @@ class ThreeAxisProbe:
 
         lift_z = min(max(cur_pos[2], self.z_hop), max_z)
         
+        if verbose:
+            gcmd.respond_info(
+                f"[3-Axis Probe] Starting alignment for target '{active_tool_name}' (AXIS={axis})\n"
+                f"  Existing Offsets: X={existing_offset_x:.4f}, Y={existing_offset_y:.4f}, Z={existing_offset_z:.4f}\n"
+                f"  Target Carriage Position: X={target_x:.3f}, Y={target_y:.3f}, Initial Z={lift_z:.3f} mm"
+            )
+
         # 1. Move XY over probe at safe high altitude
+        if verbose:
+            gcmd.respond_info(f"[3-Axis Probe] Step 1: Approaching probe location at X={target_x:.3f}, Y={target_y:.3f}, Z={lift_z:.3f} mm...")
         toolhead.manual_move([cur_pos[0], cur_pos[1], lift_z], 50.0)
         toolhead.manual_move([target_x, target_y, lift_z], 150.0)
         toolhead.wait_moves()
@@ -225,15 +258,21 @@ class ThreeAxisProbe:
         target_z_carriage = (self.z_expected - existing_offset_z) - dist
         fast_speed = max(speed * 5.0, 15.0)
 
-        # Pass 1: Fast search probe down from lift_z (stops instantly on contact)
+        # Pass 1: Fast search probe down from lift_z
+        if verbose:
+            gcmd.respond_info(f"[3-Axis Probe] Step 2a: Z Pass 1 (Fast Search Probe @ {fast_speed:.1f} mm/s)...")
         pos_z_fast = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], fast_speed)
         
         # Retract 1: Lift Z up by z_hop above fast-probed apex
         safe_z = min(pos_z_fast[2] + self.z_hop, max_z)
+        if verbose:
+            gcmd.respond_info(f"[3-Axis Probe] Step 2a triggered at carriage Z={pos_z_fast[2]:.4f} mm. Retracting Z to {safe_z:.3f} mm...")
         toolhead.manual_move([target_x, target_y, safe_z], 50.0)
         toolhead.wait_moves()
 
-        # Pass 2: Fine precision Z probe at configured slow speed over just z_hop distance
+        # Pass 2: Fine precision Z probe at configured slow speed
+        if verbose:
+            gcmd.respond_info(f"[3-Axis Probe] Step 2b: Z Pass 2 (Precision Measure Probe @ {speed:.1f} mm/s)...")
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
         z_apex = pos_z[2] + existing_offset_z
         offset_z = round(z_apex - self.z_expected, 4)
@@ -243,6 +282,12 @@ class ThreeAxisProbe:
         
         # Retract 2: Lift Z up by z_hop above the final precision-probed apex
         safe_z = min(pos_z[2] + self.z_hop, max_z)
+        if verbose:
+            gcmd.respond_info(
+                f"[3-Axis Probe] Step 2b triggered at carriage Z={pos_z[2]:.4f} mm.\n"
+                f"  Z Apex={z_apex:.4f} mm, Offset Z={offset_z:.4f} mm.\n"
+                f"  Retracting Z to safe clearance Z={safe_z:.3f} mm..."
+            )
         toolhead.manual_move([target_x, target_y, safe_z], 50.0)
         toolhead.wait_moves()
 
@@ -257,6 +302,8 @@ class ThreeAxisProbe:
 
         # 3. Perform probing moves depending on requested AXIS
         if axis == 'ALL':
+            if verbose:
+                gcmd.respond_info(f"[3-Axis Probe] Step 3: Probing X & Y axes (Iterative 2-Pass Center Mode at Z={xy_probe_z:.3f} mm)...")
             x_carriage_center, y_carriage_center = self._probe_2pass_center(
                 toolhead, target_x, target_y, safe_z, xy_probe_z, verbose, gcmd
             )
@@ -270,15 +317,25 @@ class ThreeAxisProbe:
             self.last_y_center = y_center
 
         elif axis == 'X':
+            if verbose:
+                gcmd.respond_info(f"[3-Axis Probe] Step 3: Probing X axis at Z={xy_probe_z:.3f} mm...")
             toolhead.manual_move([target_x + dist, target_y, safe_z], 150.0)
             toolhead.manual_move([target_x + dist, target_y, xy_probe_z], 50.0)
+            toolhead.wait_moves()
             pos_x1 = self._probing_move(toolhead, [target_x - dist, target_y, xy_probe_z], speed)
+            if verbose:
+                gcmd.respond_info(f"  X+ triggered at X={pos_x1[0]:.4f} mm")
             toolhead.manual_move([pos_x1[0], pos_x1[1], safe_z], 50.0)
+            toolhead.wait_moves()
 
             toolhead.manual_move([target_x - dist, target_y, safe_z], 150.0)
             toolhead.manual_move([target_x - dist, target_y, xy_probe_z], 50.0)
+            toolhead.wait_moves()
             pos_x2 = self._probing_move(toolhead, [target_x + dist, target_y, xy_probe_z], speed)
+            if verbose:
+                gcmd.respond_info(f"  X- triggered at X={pos_x2[0]:.4f} mm")
             toolhead.manual_move([pos_x2[0], pos_x2[1], safe_z], 50.0)
+            toolhead.wait_moves()
 
             x_carriage_center = (pos_x1[0] + pos_x2[0]) / 2.0
             x_center = x_carriage_center + existing_offset_x
@@ -287,15 +344,25 @@ class ThreeAxisProbe:
             self.last_x_center = x_center
 
         elif axis == 'Y':
+            if verbose:
+                gcmd.respond_info(f"[3-Axis Probe] Step 3: Probing Y axis at Z={xy_probe_z:.3f} mm...")
             toolhead.manual_move([target_x, target_y + dist, safe_z], 150.0)
             toolhead.manual_move([target_x, target_y + dist, xy_probe_z], 50.0)
+            toolhead.wait_moves()
             pos_y1 = self._probing_move(toolhead, [target_x, target_y - dist, xy_probe_z], speed)
+            if verbose:
+                gcmd.respond_info(f"  Y+ triggered at Y={pos_y1[1]:.4f} mm")
             toolhead.manual_move([pos_y1[0], pos_y1[1], safe_z], 50.0)
+            toolhead.wait_moves()
 
             toolhead.manual_move([target_x, target_y - dist, safe_z], 150.0)
             toolhead.manual_move([target_x, target_y - dist, xy_probe_z], 50.0)
+            toolhead.wait_moves()
             pos_y2 = self._probing_move(toolhead, [target_x, target_y + dist, xy_probe_z], speed)
+            if verbose:
+                gcmd.respond_info(f"  Y- triggered at Y={pos_y2[1]:.4f} mm")
             toolhead.manual_move([pos_y2[0], pos_y2[1], safe_z], 50.0)
+            toolhead.wait_moves()
 
             y_carriage_center = (pos_y1[1] + pos_y2[1]) / 2.0
             y_center = y_carriage_center + existing_offset_y
