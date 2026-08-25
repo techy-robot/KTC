@@ -96,12 +96,19 @@ class ThreeAxisProbe:
     cmd_QUERY_PROBE_help = "Query manual trigger state of the 3-axis 1-break probe switch"
     def cmd_QUERY_PROBE(self, gcmd):
         toolhead = self.printer.lookup_object('toolhead')
+        toolhead.wait_moves()
         print_time = toolhead.get_last_move_time()
         triggered = self.mcu_endstop.query_endstop(print_time)
         self.last_query_triggered = bool(triggered)
         
         state_str = "TRIGGERED (Contact Detected)" if triggered else "OPEN (No Contact)"
-        gcmd.respond_info(f"3-Axis Probe '{self.name}' [{self.pin}] status: {state_str}")
+        gcmd.respond_info(
+            f"3-Axis Probe '{self.name}' [{self.pin}] status: {state_str}\n"
+            f"  [Verification Checklist]:\n"
+            f"  1. Nozzle in mid-air (untouched) -> MUST report 'OPEN (No Contact)'.\n"
+            f"  2. Probe switch manually pressed  -> MUST report 'TRIGGERED (Contact Detected)'.\n"
+            f"  If state #1 reports 'TRIGGERED', flip pin polarity in nudge.cfg (e.g. '^!' to '^')."
+        )
 
     def _probe_2pass_center(self, toolhead, start_x, start_y, safe_z, z_height, verbose=False, gcmd=None):
         """
@@ -238,19 +245,25 @@ class ThreeAxisProbe:
         except Exception:
             max_z = 999999.0
 
-        lift_z = min(max(cur_pos[2], self.z_hop), max_z)
+        # Lift Z up by z_hop first to ensure nozzle clears any obstacles / probe switch
+        lift_z = min(max(cur_pos[2] + self.z_hop, (self.z_expected - existing_offset_z) + self.z_hop), max_z)
         
         if verbose:
             gcmd.respond_info(
                 f"[3-Axis Probe] Starting alignment for target '{active_tool_name}' (AXIS={axis})\n"
                 f"  Existing Offsets: X={existing_offset_x:.4f}, Y={existing_offset_y:.4f}, Z={existing_offset_z:.4f}\n"
-                f"  Target Carriage Position: X={target_x:.3f}, Y={target_y:.3f}, Initial Z={lift_z:.3f} mm"
+                f"  Target Carriage Position: X={target_x:.3f}, Y={target_y:.3f}, Initial Travel Z={lift_z:.3f} mm"
             )
 
-        # 1. Move XY over probe at safe high altitude
+        # 1a. Lift Z vertically FIRST at current XY position to clear probe / obstacles
         if verbose:
-            gcmd.respond_info(f"[3-Axis Probe] Step 1: Approaching probe location at X={target_x:.3f}, Y={target_y:.3f}, Z={lift_z:.3f} mm...")
+            gcmd.respond_info(f"[3-Axis Probe] Step 1a: Lifting Z to safe travel height Z={lift_z:.3f} mm...")
         toolhead.manual_move([cur_pos[0], cur_pos[1], lift_z], 50.0)
+        toolhead.wait_moves()
+
+        # 1b. Move XY horizontally over probe location at lift_z
+        if verbose:
+            gcmd.respond_info(f"[3-Axis Probe] Step 1b: Traveling XY to target X={target_x:.3f}, Y={target_y:.3f} at Z={lift_z:.3f} mm...")
         toolhead.manual_move([target_x, target_y, lift_z], 150.0)
         toolhead.wait_moves()
         
