@@ -267,10 +267,25 @@ class ThreeAxisProbe:
         toolhead.manual_move([target_x, target_y, lift_z], 150.0)
         toolhead.wait_moves()
         
-        # 2. Single precision Z-axis probe move
+        # 2. Probe Z-axis top apex (2-Pass System: Pass 1 Fast Search, Pass 2 Fine Precision)
         target_z_carriage = (self.z_expected - existing_offset_z) - dist
+        fast_speed = max(speed * 6.0, 15.0)
+
+        # Step 2a: Fast Search Probe Move down from high Z (stops instantly on contact at 15 mm/s)
         if verbose:
-            gcmd.respond_info(f"[3-Axis Probe] Step 2: Probing Z axis @ {speed:.1f} mm/s towards Z={target_z_carriage:.3f} mm...")
+            gcmd.respond_info(f"[3-Axis Probe] Step 2a: Fast Z Search Probe @ {fast_speed:.1f} mm/s towards Z={target_z_carriage:.3f} mm...")
+        pos_z_fast = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], fast_speed)
+        
+        # Step 2b: Retract 10mm above fast-probed apex to release switch
+        safe_z_fast = min(pos_z_fast[2] + self.z_hop, max_z)
+        if verbose:
+            gcmd.respond_info(f"[3-Axis Probe] Step 2a triggered at carriage Z={pos_z_fast[2]:.4f} mm. Retracting Z to {safe_z_fast:.3f} mm...")
+        toolhead.manual_move([target_x, target_y, safe_z_fast], 50.0)
+        toolhead.wait_moves()
+
+        # Step 2c: Fine Precision Probe Move at configured slow speed over short distance
+        if verbose:
+            gcmd.respond_info(f"[3-Axis Probe] Step 2b: Fine Precision Z Probe @ {speed:.1f} mm/s...")
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
         z_apex = pos_z[2] + existing_offset_z
         offset_z = round(z_apex - self.z_expected, 4)
@@ -278,11 +293,11 @@ class ThreeAxisProbe:
         self.last_z_apex = z_apex
         self.last_offset_z = offset_z
         
-        # Retract Z to safe height above the probed apex
+        # Step 2d: Retract Z to safe height above final probed apex
         safe_z = min(pos_z[2] + self.z_hop, max_z)
         if verbose:
             gcmd.respond_info(
-                f"[3-Axis Probe] Step 2 triggered at carriage Z={pos_z[2]:.4f} mm.\n"
+                f"[3-Axis Probe] Step 2b triggered at carriage Z={pos_z[2]:.4f} mm.\n"
                 f"  Z Apex={z_apex:.4f} mm, Offset Z={offset_z:.4f} mm.\n"
                 f"  Retracting Z to safe clearance Z={safe_z:.3f} mm..."
             )
