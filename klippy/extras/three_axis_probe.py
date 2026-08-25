@@ -245,7 +245,7 @@ class ThreeAxisProbe:
         except Exception:
             max_z = 999999.0
 
-        # Lift Z up by z_hop first to ensure nozzle clears any obstacles / probe switch
+        # 1. Lift Z vertically FIRST at current XY position to clear obstacles
         lift_z = min(max(cur_pos[2] + self.z_hop, (self.z_expected - existing_offset_z) + self.z_hop), max_z)
         
         if verbose:
@@ -255,7 +255,7 @@ class ThreeAxisProbe:
                 f"  Target Carriage Position: X={target_x:.3f}, Y={target_y:.3f}, Initial Travel Z={lift_z:.3f} mm"
             )
 
-        # 1a. Lift Z vertically FIRST at current XY position to clear probe / obstacles
+        # 1a. Lift Z vertically FIRST at current XY position
         if verbose:
             gcmd.respond_info(f"[3-Axis Probe] Step 1a: Lifting Z to safe travel height Z={lift_z:.3f} mm...")
         toolhead.manual_move([cur_pos[0], cur_pos[1], lift_z], 50.0)
@@ -267,25 +267,10 @@ class ThreeAxisProbe:
         toolhead.manual_move([target_x, target_y, lift_z], 150.0)
         toolhead.wait_moves()
         
-        # 2. Probe Z-axis top apex (2-Pass System: Pass 1 Fast Search, Pass 2 Precision Measure)
+        # 2. Single precision Z-axis probe move
         target_z_carriage = (self.z_expected - existing_offset_z) - dist
-        fast_speed = max(speed * 5.0, 15.0)
-
-        # Pass 1: Fast search probe down from lift_z
         if verbose:
-            gcmd.respond_info(f"[3-Axis Probe] Step 2a: Z Pass 1 (Fast Search Probe @ {fast_speed:.1f} mm/s)...")
-        pos_z_fast = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], fast_speed)
-        
-        # Retract 1: Lift Z up by z_hop above fast-probed apex
-        safe_z = min(pos_z_fast[2] + self.z_hop, max_z)
-        if verbose:
-            gcmd.respond_info(f"[3-Axis Probe] Step 2a triggered at carriage Z={pos_z_fast[2]:.4f} mm. Retracting Z to {safe_z:.3f} mm...")
-        toolhead.manual_move([target_x, target_y, safe_z], 50.0)
-        toolhead.wait_moves()
-
-        # Pass 2: Fine precision Z probe at configured slow speed
-        if verbose:
-            gcmd.respond_info(f"[3-Axis Probe] Step 2b: Z Pass 2 (Precision Measure Probe @ {speed:.1f} mm/s)...")
+            gcmd.respond_info(f"[3-Axis Probe] Step 2: Probing Z axis @ {speed:.1f} mm/s towards Z={target_z_carriage:.3f} mm...")
         pos_z = self._probing_move(toolhead, [target_x, target_y, target_z_carriage], speed)
         z_apex = pos_z[2] + existing_offset_z
         offset_z = round(z_apex - self.z_expected, 4)
@@ -293,11 +278,11 @@ class ThreeAxisProbe:
         self.last_z_apex = z_apex
         self.last_offset_z = offset_z
         
-        # Retract 2: Lift Z up by z_hop above the final precision-probed apex
+        # Retract Z to safe height above the probed apex
         safe_z = min(pos_z[2] + self.z_hop, max_z)
         if verbose:
             gcmd.respond_info(
-                f"[3-Axis Probe] Step 2b triggered at carriage Z={pos_z[2]:.4f} mm.\n"
+                f"[3-Axis Probe] Step 2 triggered at carriage Z={pos_z[2]:.4f} mm.\n"
                 f"  Z Apex={z_apex:.4f} mm, Offset Z={offset_z:.4f} mm.\n"
                 f"  Retracting Z to safe clearance Z={safe_z:.3f} mm..."
             )
