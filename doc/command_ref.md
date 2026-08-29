@@ -24,12 +24,13 @@
 > [!NOTE]
 > You must have Viesturs `tools_calibrate.py` in the extras folder somewhere. If you are running **Kalico firmware** , the `tools_calibrate` extra module is **already included natively in the firmware**. No external scripts or manual file copying to `klippy/extras` are required.
 
-  | Command | Description | 
-  | ------- | ----------- |
-  | `TOOL_LOCATE_SENSOR` | Probes physical calibration switch using reference tool T0 to locate center (X, Y) and reference top Z height. |
-  | `TOOL_CALIBRATE_TOOL_OFFSET [TOOL=<name>]` | Calibrates X, Y, and Z offsets of the active or specified tool relative to the reference tool T0 via probe bump sequence. |
-  | `TOOL_CALIBRATE_PROBE_OFFSET` | Calibrates Z probe offset relative to the tool calibration sensor. |
-  | `TOOL_CALIBRATE_SAVE_TOOL_OFFSET` | Saves measured tool offset parameters to printer config / KTC persistent storage. |
+| Command | Description |
+| --- | --- |
+| `TOOL_LOCATE_SENSOR [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | Locate the tool calibration sensor, use with tool 0. |
+| `TOOL_CALIBRATE_TOOL_OFFSET [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | Calibrate current tool offset relative to tool 0. |
+| `TOOL_CALIBRATE_SAVE_TOOL_OFFSET [SECTION=<name> ATTRIBUTE=<attr>] [MACRO=<name> VARIABLE=<var>] [VALUE=<format>]` | Save tool offset calibration to config or G-code macro variable. |
+| `TOOL_CALIBRATE_QUERY_PROBE` | Return the state of calibration probe. |
+
   <br>
 
   ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Tool number mapping commands
