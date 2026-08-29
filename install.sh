@@ -152,6 +152,20 @@ link_extension()
     log_blank
     log_header "Linking extension files to Klipper..."
 
+    for plugin in "${KLIPPER_PLUGINS_PATH}"*; do
+        if [ -L "${plugin}" ]; then
+            target=$(readlink "${plugin}")
+            real_target=$(readlink -f "${plugin}" 2>/dev/null || true)
+            if [[ "${target}" == *"${EXTENSION_PATH}"* ]] || [[ "${real_target}" == *"${EXTENSION_PATH}"* ]]; then
+                filename=$(basename "${plugin}")
+                if [ ! -f "${EXTENSION_PATH}/${filename}" ]; then
+                    log_info "Removing no longer referenced file: (${filename})."
+                    rm -f "${plugin}"
+                fi
+            fi
+        fi
+    done
+
     for file in $(cd ${EXTENSION_PATH}/ ; ls *.py); do
         ln -sf "${EXTENSION_PATH}/${file}" "${KLIPPER_PLUGINS_PATH}/${file}"
         log_info "Linking extension file: (${file})."
