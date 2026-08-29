@@ -19,12 +19,17 @@
   | `KTC_TOOL_OFFSET_SAVE [TOOL=<name> \| T=<index>] [ [[X=<pos>] [Y=<pos>] [Z=<pos>]] \| [[X_ADJUST=<adjust>] [Y_ADJUST=<adjust>] [Z_ADJUST=<adjust>]] ]` | Save the positional offset of an individual tool to file so it can be used later. Reports the tool offset without global offsets if no offset parameter is provided. |
   <br>
 
-  ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) 3-Axis Probe Commands (Added by Asher Edwards)
+  ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Viesturs Tool Offset Calibration Commands (`tools_calibrate`)
+
+> [!NOTE]
+> You must have Viesturs `tools_calibrate.py` in the extras folder somewhere. If you are running **Kalico firmware** , the `tools_calibrate` extra module is **already included natively in the firmware**. No external scripts or manual file copying to `klippy/extras` are required.
+
   | Command | Description | 
   | ------- | ----------- |
-  | `KTC_THREE_AXIS_PROBE_ALIGN` `[AXIS=ALL|X|Y|Z] [TOOL=<name>|global] [SPEED=<val>] [DISTANCE=<val>] [VERBOSE=0|1] [SAVE=0|1]` | Execute 3D tool alignment (`AXIS=ALL`) or single-axis probe move (`AXIS=X|Y|Z`). Saves calculated X, Y, Z offsets to specified tool, active tool, or as global offset (if `TOOL=global` or no tool active). Triggers `on_align_gcode` macro. |
-  | `KTC_THREE_AXIS_PROBE_QUERY` | Query the manual trigger state of the 3-axis 1-break switch input. |
-  | `KTC_THREE_AXIS_PROBE_CHECK_FILAMENT` `LAYER=<num> [INTERVAL=<num>]` | Probe hotend Z apex during print execution to detect stuck filament or nozzle blobs. Triggers `on_blob_detected_gcode` macro if configured in `[three_axis_probe]`. |
+  | `TOOL_LOCATE_SENSOR` | Probes physical calibration switch using reference tool T0 to locate center (X, Y) and reference top Z height. |
+  | `TOOL_CALIBRATE_TOOL_OFFSET [TOOL=<name>]` | Calibrates X, Y, and Z offsets of the active or specified tool relative to the reference tool T0 via probe bump sequence. |
+  | `TOOL_CALIBRATE_PROBE_OFFSET` | Calibrates Z probe offset relative to the tool calibration sensor. |
+  | `TOOL_CALIBRATE_SAVE_TOOL_OFFSET` | Saves measured tool offset parameters to printer config / KTC persistent storage. |
   <br>
 
   ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Tool number mapping commands

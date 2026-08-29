@@ -7,25 +7,8 @@
   - `state` - State of KTC, one of STATE_TYPE.
   - `tools` - List of all tool names.
   - `toolchangers` - List of all toolchangers.
-  - `has_3axis_probe` - True if a 3-axis probe (Nudge) module is loaded.
   - `params_available` - List of available custom parameters as specified in the configuration file.
   - `params_*` - parameter in the above list.
-
-## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) **3-Axis Probe (`three_axis_probe` / `nudge`)** - (Added by Asher Edwards) Accessible via `printer['three_axis_probe <name>']` or `printer.three_axis_probe`
-  - `name` - Probe instance section name.
-  - `fixed_x` - Fixed probe center X location.
-  - `fixed_y` - Fixed probe center Y location.
-  - `status` - Current probe state string (`IDLE`, `ALIGNING`, `ALIGNED`, `BLOB_DETECTED`, `CHECK_PASSED`).
-  - `last_tool_name` - Name of active tool probed during last alignment.
-  - `last_offset_x` - Relative X offset (`last_x_center - fixed_x`).
-  - `last_offset_y` - Relative Y offset (`last_y_center - fixed_y`).
-  - `last_offset_z` - Relative Z offset (`last_z_apex - z_expected`).
-  - `last_z_apex` - Raw physical machine Z coordinate where top contact occurred (un-offset).
-  - `last_x_center` - Raw physical machine X center coordinate.
-  - `last_y_center` - Raw physical machine Y center coordinate.
-  - `last_probed_z` - Last Z height measured during filament blob check.
-  - `last_blob_detected` - True if stuck filament / blob was detected.
-  - `last_query_triggered` - True if last switch query was triggered.
 
 
 

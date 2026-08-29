@@ -219,37 +219,30 @@ The log module needs no referenced in the configuration if using default options
 #   Usefull when debugging.
 ```
 
-## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) [three_axis_probe] / [nudge] (Added by Asher Edwards)
+## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) [tools_calibrate] (Viesturs Tool Calibration)
 
-Configures a 3-axis 1-break switch probe (Nudge) for automatic toolhead offset alignment and stuck filament / blob safety checks.
+Configures automated multi-tool nozzle offset calibration using a physical contact probe switch (e.g. sexbolt or nudge probe).
+
+> [!NOTE]
+> **Kalico Firmware Compatibility**: If you are running **Kalico firmware** (or Viesturs toolchanger stack), the `tools_calibrate` extra module is **already included natively in the firmware**. No external scripts or manual file copying to `klippy/extras` are required.
 
 ```ini
-[three_axis_probe nudge]
+[tools_calibrate]
 #pin: ^!PG12
-#   MCU input pin for the 3-axis break switch (normally closed / NC switch recommended).
-#x: 150.0
-#   Fixed X coordinate of probe center on bed (mm).
-#y: 10.0
-#   Fixed Y coordinate of probe center on bed (mm).
-#z_hop: 10.0
-#   Safe Z height for travel moves around probe (mm).
-#z_probe_depth: -2.0
-#   Depth below top Z apex for X/Y probing pass (mm).
-#search_dist: 6.0
-#   Maximum probing search distance for contact (mm).
-#z_expected: 0.0
-#   Nominal expected Z trigger height for clean nozzle (mm).
-#tolerance: 0.35
-#   Maximum Z deviation allowed before flagging blob alert (mm).
-#speed: 2.0
-#   Probing travel speed (mm/s).
-#debug: False
-#   Enable detailed logging to Klipper log file.
-#on_align_gcode:
-#   Custom G-code macro to execute automatically after tool alignment finishes.
-#   Passed parameters: TOOL, X, Y, Z, APEX, X_CENTER, Y_CENTER.
-#on_blob_detected_gcode:
-#   Custom G-code macro to execute when a blob/stuck filament is detected during print checks.
-#   Passed parameters: LAYER, PROBED_Z, EXPECTED_Z, TOLERANCE, BLOB_DETECTED.
+#   MCU input pin connected to the physical tool calibration contact switch probe.
+#travel_speed: 150
+#   Speed (mm/s) for positioning moves between probe touchpoints.
+#spread: 5.0
+#   X/Y search radial distance (mm) from probe center when probing lateral edges.
+#lower_z: 0.5
+#   Z distance (mm) to lower nozzle below top Z contact point during lateral X/Y probing moves.
+#speed: 3.0
+#   Movement speed (mm/s) during active probing contact moves.
+#lift_speed: 10.0
+#   Retract speed (mm/s) when backing off after trigger contact.
+#samples: 3
+#   Number of contact probing samples per side.
+#samples_tolerance: 0.05
+#   Maximum allowable deviation (mm) between probing samples before error.
 ```
 

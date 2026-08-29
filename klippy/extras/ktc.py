@@ -140,9 +140,6 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_TOOL_MAP_NR",
             "KTC_DEBUG_HEATERS",
             "KTC_DEBUG_TOOLS",
-            "KTC_THREE_AXIS_PROBE_ALIGN",
-            "KTC_THREE_AXIS_PROBE_QUERY",
-            "KTC_THREE_AXIS_PROBE_CHECK_FILAMENT",
         ]
         for cmd in handlers:
             func = getattr(self, "cmd_" + cmd)
@@ -845,43 +842,6 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         self.persistent_state_set("global_offset", self.global_offset)
         self.log.always(f"Global offset set to: {self.global_offset}")
 
-    def _get_three_axis_probe(self, gcmd):
-        probe = self.printer.lookup_object("three_axis_probe", None)
-        if probe is None:
-            for name, obj in self.printer.objects.items():
-                if name.startswith("three_axis_probe"):
-                    probe = obj
-                    break
-        if probe is None:
-            raise gcmd.error("No [three_axis_probe] module loaded in config!")
-        return probe
-
-    cmd_KTC_THREE_AXIS_PROBE_ALIGN_help = (
-        "Align toolhead offsets (X, Y, Z or ALL) using 3-axis probe.\n"
-        "Parameters: [AXIS=ALL|X|Y|Z] [TOOL=<name>] [SPEED=<val>] [DISTANCE=<val>] "
-        "[VERBOSE=0|1] [SAVE=0|1]"
-    )
-
-    def cmd_KTC_THREE_AXIS_PROBE_ALIGN(self, gcmd):
-        probe = self._get_three_axis_probe(gcmd)
-        probe.cmd_ALIGN_TOOL(gcmd)
-
-    cmd_KTC_THREE_AXIS_PROBE_QUERY_help = (
-        "Query 3-axis probe trigger state."
-    )
-
-    def cmd_KTC_THREE_AXIS_PROBE_QUERY(self, gcmd):
-        probe = self._get_three_axis_probe(gcmd)
-        probe.cmd_QUERY_PROBE(gcmd)
-
-    cmd_KTC_THREE_AXIS_PROBE_CHECK_FILAMENT_help = (
-        "Check for blob / stuck filament using 3-axis probe."
-    )
-
-    def cmd_KTC_THREE_AXIS_PROBE_CHECK_FILAMENT(self, gcmd):
-        probe = self._get_three_axis_probe(gcmd)
-        probe.cmd_CHECK_FILAMENT(gcmd)
-
     ###########################################
     # TOOL REMAPING                           #
     ###########################################
@@ -946,14 +906,12 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         active_tool_number = self.active_tool.number if getattr(self, "active_tool", None) is not None else None
         tool_none_name = self.TOOL_NONE.name if getattr(self, "TOOL_NONE", None) is not None else ""
         tool_unknown_name = self.TOOL_UNKNOWN.name if getattr(self, "TOOL_UNKNOWN", None) is not None else ""
-        has_3axis_probe = len(self.printer.lookup_objects("three_axis_probe")) > 0
         status = {
             "global_offset": global_offset,
             "active_tool": active_tool_name,  # Active tool name for GCode compatibility.
             "active_tool_n": active_tool_number,  # Active tool number for GCode compatibility.
             "saved_fan_speed": self.saved_fan_speed,
             "state": self.state,
-            "has_3axis_probe": has_3axis_probe,
             "tools": list(self.all_tools.keys()) if getattr(self, "all_tools", None) is not None else [],
             "toolchangers": list(self.all_toolchangers.keys()) if getattr(self, "all_toolchangers", None) is not None else [],
             "TOOL_NONE": tool_none_name,
