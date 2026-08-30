@@ -28,7 +28,7 @@
   | ------- | ----------- |
   | `KTC_TOOL_LOCATE_SENSOR [AXIS=ALL\|X\|Y\|Z] [X=1] [Y=1] [Z=1] [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | Locate reference pin coordinate using reference tool (T0). Supports specifying individual axes or omitting to probe all. |
   | `KTC_TOOL_CALIBRATE_OFFSET [AXIS=ALL\|X\|Y\|Z] [X=1] [Y=1] [Z=1] [SAVE=0\|1] [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | Calibrate tool offset relative to reference sensor location for specified axes (or all axes if unspecified). Pass `SAVE=1` to persist offset in one step. |
-  | `KTC_TOOL_CALIBRATE_SAVE [TOOL=<name>\|global] [T=<index>] [SECTION=<name> ATTRIBUTE=<attr>] [MACRO=<name> VARIABLE=<var>] [VALUE=<format>]` | Save calibrated tool offset directly to KTC tool object and persistent storage, or update global offset (`TOOL=global`). Falls back to config/macro variables if `SECTION` or `MACRO` is provided. |
+  | `KTC_TOOL_CALIBRATE_SAVE [TOOL=<name>\|global] [T=<index>] [AXIS=ALL\|X\|Y\|Z] [X=1] [Y=1] [Z=1] [SECTION=<name> ATTRIBUTE=<attr>] [MACRO=<name> VARIABLE=<var>] [VALUE=<format>]` | Save calibrated tool offset directly to KTC tool object and persistent storage, or update global offset (`TOOL=global`). Automatically updates only the probed axes (or specified axes). Falls back to config/macro variables if `SECTION` or `MACRO` is provided. |
   | `KTC_TOOL_CALIBRATE_QUERY` | Query current trigger state of the calibration probe. |
 
   <br>

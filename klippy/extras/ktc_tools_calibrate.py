@@ -174,6 +174,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         else:
             self.sensor_location = None
         self.last_result: typing.Optional[Position] = None
+        self.last_probed_axes: tuple[bool, bool, bool] = (False, False, False)
         self.last_calibrated_tool: typing.Optional[str] = None
         self.last_probe_offset = 0.0
         self.calibration_probe_inactive = True
@@ -210,7 +211,9 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                     )
                 )
 
-    def _parse_axes(self, gcmd: "gcode.GCodeCommand") -> tuple[bool, bool, bool]:
+    def _parse_axes(
+        self, gcmd: "gcode.GCodeCommand", default_all: bool = True
+    ) -> tuple[bool, bool, bool]:
         probe_x = gcmd.get("X", None) is not None
         probe_y = gcmd.get("Y", None) is not None
         probe_z = gcmd.get("Z", None) is not None
@@ -218,17 +221,13 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         if axis_param is not None:
             axis_param = axis_param.upper()
             if "ALL" in axis_param:
-                probe_x = probe_y = probe_z = True
-            else:
-                if "X" in axis_param:
-                    probe_x = True
-                if "Y" in axis_param:
-                    probe_y = True
-                if "Z" in axis_param:
-                    probe_z = True
-        if not (probe_x or probe_y or probe_z):
-            probe_x = probe_y = probe_z = True
-        return probe_x, probe_y, probe_z
+                return True, True, True
+            return "X" in axis_param, "Y" in axis_param, "Z" in axis_param
+        if probe_x or probe_y or probe_z:
+            return probe_x, probe_y, probe_z
+        if default_all:
+            return True, True, True
+        return False, False, False
 
     def probe_xy(
         self, toolhead, top_pos, direction, gcmd, spread, samples=None
@@ -399,7 +398,6 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                 location.y if probe_y else (self.config_sensor_y if self.config_sensor_y is not None else 0.0),
                 location.z if probe_z else (self.config_sensor_z if self.config_sensor_z is not None else 0.0),
             )
-        self.last_result = self.sensor_location
         msg = "KTC Tools Calibrate: Sensor location at %.6f, %.6f, %.6f" % (
             self.sensor_location[0],
             self.sensor_location[1],
@@ -410,7 +408,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
 
     cmd_KTC_TOOL_CALIBRATE_OFFSET_help = (
         "Calibrate current tool offset relative to reference sensor location."
-        + "\n [AXIS=ALL|X|Y|Z] or [X=1] [Y=1] [Z=1] [SAVE=0|1]"
+        + "\n [AXIS=ALL|X|Y|Z] or [X=1] [Y=1] [Z=1] [TOOL: Tool name | global] [T: Tool number] [SAVE=0|1]"
     )
 
     def cmd_KTC_TOOL_CALIBRATE_OFFSET(self, gcmd: "gcode.GCodeCommand"):
@@ -422,13 +420,15 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         location = self.locate_sensor(
             gcmd, probe_x=probe_x, probe_y=probe_y, probe_z=probe_z
         )
+        self.last_probed_axes = (probe_x, probe_y, probe_z)
 
         # Get existing offset for unprobed axes if available
         existing_offset = [0.0, 0.0, 0.0]
         if self.ktc is not None:
             tool_param = gcmd.get("TOOL", None)
             if tool_param is not None and tool_param.strip().lower() == "global":
-                existing_offset = list(self.ktc.global_offset)
+                if self.ktc.global_offset is not None:
+                    existing_offset = list(self.ktc.global_offset)
             else:
                 target_tool = None
                 if tool_param is not None or gcmd.get("T", None) is not None:
@@ -439,14 +439,9 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                     target_tool
                     and target_tool != self.TOOL_UNKNOWN
                     and target_tool != self.TOOL_NONE
+                    and target_tool.offset is not None
                 ):
                     existing_offset = list(target_tool.offset)
-        elif self.last_result is not None:
-            existing_offset = [
-                self.last_result.x,
-                self.last_result.y,
-                self.last_result.z,
-            ]
 
         offset_x = (
             (location[0] - self.sensor_location[0])
@@ -480,6 +475,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
     cmd_KTC_TOOL_CALIBRATE_SAVE_help = (
         "Save tool offset calibration to KTC persistent storage or config."
         + "\n [TOOL: Tool name | global] or [T: Tool number]"
+        + "\n [AXIS=ALL|X|Y|Z] or [X=1] [Y=1] [Z=1]"
         + "\n [SECTION: Config section] [ATTRIBUTE: Config attribute]"
         + "\n [MACRO: Macro name] [VARIABLE: Macro variable]"
     )
@@ -492,6 +488,12 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             raise gcmd.error(
                 "No offset result, please run KTC_TOOL_CALIBRATE_OFFSET first"
             )
+
+        save_x, save_y, save_z = self._parse_axes(gcmd, default_all=False)
+        if not (save_x or save_y or save_z):
+            save_x, save_y, save_z = self.last_probed_axes
+        if not (save_x or save_y or save_z):
+            save_x = save_y = save_z = True
 
         # Legacy configfile.set support
         if gcmd.get("SECTION", None):
@@ -528,11 +530,16 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         if self.ktc is not None:
             tool_param = gcmd.get("TOOL", None)
             if tool_param is not None and tool_param.strip().lower() == "global":
-                self.ktc.global_offset = [
-                    self.last_result.x,
-                    self.last_result.y,
-                    self.last_result.z,
-                ]
+                if self.ktc.global_offset is None:
+                    self.ktc.global_offset = [0.0, 0.0, 0.0]
+                else:
+                    self.ktc.global_offset = list(self.ktc.global_offset)
+                if save_x:
+                    self.ktc.global_offset[0] = round(self.last_result.x, 6)
+                if save_y:
+                    self.ktc.global_offset[1] = round(self.last_result.y, 6)
+                if save_z:
+                    self.ktc.global_offset[2] = round(self.last_result.z, 6)
                 self.ktc.persistent_state_set("global_offset", self.ktc.global_offset)
                 msg = f"KTC Global offset set to: {self.ktc.global_offset}"
                 self.log_always(msg)
@@ -555,12 +562,18 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                     "Specify TOOL=<name> or T=<number>."
                 )
 
-            new_offset = [
-                round(self.last_result.x, 6),
-                round(self.last_result.y, 6),
-                round(self.last_result.z, 6),
-            ]
-            target_tool.offset = new_offset
+            if target_tool.offset is None:
+                target_tool.offset = [0.0, 0.0, 0.0]
+            else:
+                target_tool.offset = list(target_tool.offset)
+
+            if save_x:
+                target_tool.offset[0] = round(self.last_result.x, 6)
+            if save_y:
+                target_tool.offset[1] = round(self.last_result.y, 6)
+            if save_z:
+                target_tool.offset[2] = round(self.last_result.z, 6)
+
             target_tool.persistent_state_set("offset", target_tool.offset)
             self.last_calibrated_tool = target_tool.name
             msg = f"KTC Tool {target_tool.name} offset set to: {target_tool.offset}"
