@@ -219,12 +219,12 @@ The log module needs no referenced in the configuration if using default options
 #   Usefull when debugging.
 ```
 
-## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) [tools_calibrate] (Viesturs Tool Calibration)
+## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) [tools_calibrate] / [ktc_tools_calibrate] (Tool Offset Calibration)
 
-Configures automated multi-tool nozzle offset calibration using a physical contact probe switch (e.g. sexbolt or nudge probe).
+Configures automated multi-tool nozzle offset calibration using a physical contact probe switch (e.g. sexbolt, 3-axis switch, or nudge probe).
 
 > [!NOTE]
-> **Kalico Firmware Compatibility**: If you are running **Kalico firmware** (or Viesturs toolchanger stack), the `tools_calibrate` extra module is **already included natively in the firmware**. No external scripts or manual file copying to `klippy/extras` are required.
+> Supports section header `[ktc_tools_calibrate]` or `[tools_calibrate]`. Offsets calibrated with `KTC_TOOL_CALIBRATE_OFFSET` / `KTC_TOOL_CALIBRATE_SAVE` are saved directly to KTC runtime objects and persistent variables (`~/ktc_variables.cfg`) without requiring firmware restarts.
 
 ```ini
 [tools_calibrate]
