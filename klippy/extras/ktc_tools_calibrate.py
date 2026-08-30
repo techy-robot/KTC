@@ -156,6 +156,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         if self.log is not None:
             self.log.always(msg)
         else:
+            self.gcode.respond_info(msg)
             logging.info(msg)
 
     def _reset_last_results(self, eventtime=None):
@@ -381,13 +382,12 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                 location.z if probe_z else (self.config_sensor_z if self.config_sensor_z is not None else 0.0),
             )
         self.last_result = self.sensor_location
-        msg = "Sensor location at %.6f, %.6f, %.6f" % (
+        msg = "KTC Tools Calibrate: Sensor location at %.6f, %.6f, %.6f" % (
             self.sensor_location[0],
             self.sensor_location[1],
             self.sensor_location[2],
         )
-        self.log_always(f"KTC Tools Calibrate: {msg}")
-        self.gcode.respond_info(msg)
+        self.log_always(msg)
 
     cmd_KTC_TOOL_CALIBRATE_OFFSET_help = (
         "Calibrate current tool offset relative to reference sensor location."
@@ -446,13 +446,12 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         )
         self.last_result = Position(offset_x, offset_y, offset_z)
 
-        msg = "Tool offset is %.6f, %.6f, %.6f" % (
+        msg = "KTC Tools Calibrate: Tool offset is %.6f, %.6f, %.6f" % (
             self.last_result[0],
             self.last_result[1],
             self.last_result[2],
         )
-        self.log_always(f"KTC Tools Calibrate: {msg}")
-        self.gcode.respond_info(msg)
+        self.log_always(msg)
 
         save_param = gcmd.get("SAVE", None)
         if save_param is not None and self.parse_bool(save_param):
@@ -517,7 +516,6 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                 self.ktc.persistent_state_set("global_offset", self.ktc.global_offset)
                 msg = f"KTC Global offset set to: {self.ktc.global_offset}"
                 self.log_always(msg)
-                self.gcode.respond_info(msg)
                 return
 
             # Resolve target tool
@@ -547,7 +545,6 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             self.last_calibrated_tool = target_tool.name
             msg = f"KTC Tool {target_tool.name} offset set to: {target_tool.offset}"
             self.log_always(msg)
-            self.gcode.respond_info(msg)
             return
 
         raise gcmd.error(
