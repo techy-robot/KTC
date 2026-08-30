@@ -10,6 +10,7 @@ from __future__ import annotations
 import collections
 import enum
 import logging
+import math
 import typing
 
 from klippy import pins
@@ -191,7 +192,23 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             ),
             "last_calibrated_tool": self.last_calibrated_tool,
             "calibration_probe_inactive": self.calibration_probe_inactive,
+            "last_repeatability": self.probe_multi_axis.last_probe_stats,
         }
+
+    def _log_repeatability_stats(self):
+        for direction, stats in self.probe_multi_axis.last_probe_stats.items():
+            if stats.get("samples", 0) > 1:
+                self.log_always(
+                    "KTC Tools Calibrate: Probe repeatability (%s) - range: %.6f, stddev: %.6f, min: %.6f, max: %.6f (samples: %d)"
+                    % (
+                        direction,
+                        stats["range"],
+                        stats["std_dev"],
+                        stats["min"],
+                        stats["max"],
+                        stats["samples"],
+                    )
+                )
 
     def _parse_axes(self, gcmd: "gcode.GCodeCommand") -> tuple[bool, bool, bool]:
         probe_x = gcmd.get("X", None) is not None
@@ -264,6 +281,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
     def locate_sensor(
         self, gcmd, probe_x=True, probe_y=True, probe_z=True
     ):
+        self.probe_multi_axis.last_probe_stats.clear()
         toolhead = self.printer.lookup_object("toolhead")
         position = toolhead.get_position()
 
@@ -388,6 +406,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             self.sensor_location[2],
         )
         self.log_always(msg)
+        self._log_repeatability_stats()
 
     cmd_KTC_TOOL_CALIBRATE_OFFSET_help = (
         "Calibrate current tool offset relative to reference sensor location."
@@ -452,6 +471,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             self.last_result[2],
         )
         self.log_always(msg)
+        self._log_repeatability_stats()
 
         save_param = gcmd.get("SAVE", None)
         if save_param is not None and self.parse_bool(save_param):
@@ -590,6 +610,7 @@ class PrinterProbeMultiAxis:
         self.last_x_result = 0.0
         self.last_y_result = 0.0
         self.last_z_result = 0.0
+        self.last_probe_stats: dict[str, dict[str, typing.Any]] = {}
         self.gcode = self.printer.lookup_object("gcode")
         self.gcode_move = self.printer.load_object(config, "gcode_move")
 
@@ -740,6 +761,26 @@ class PrinterProbeMultiAxis:
                 liftpos = probe_start
                 liftpos[axis] = pos[axis] - sense * sample_retract_dist
                 self._move(liftpos, lift_speed)
+        # Record repeatability statistics if multi-sample
+        if len(positions) > 1:
+            axis_positions = [p[axis] for p in positions]
+            min_val = min(axis_positions)
+            max_val = max(axis_positions)
+            range_val = max_val - min_val
+            mean_val = sum(axis_positions) / len(axis_positions)
+            variance = sum((x - mean_val) ** 2 for x in axis_positions) / len(axis_positions)
+            std_dev = math.sqrt(variance)
+            self.last_probe_stats[direction] = {
+                "direction": direction,
+                "axis": ["x", "y", "z"][axis],
+                "samples": len(positions),
+                "min": min_val,
+                "max": max_val,
+                "range": range_val,
+                "mean": mean_val,
+                "std_dev": std_dev,
+            }
+
         # Calculate and return result
         if samples_result == "median":
             return self._calc_median(positions, axis)
