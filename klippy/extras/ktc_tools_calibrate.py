@@ -386,6 +386,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         location = self.locate_sensor(
             gcmd, probe_x=probe_x, probe_y=probe_y, probe_z=probe_z
         )
+        self.last_probed_axes = (probe_x, probe_y, probe_z)
         if self.sensor_location is not None:
             self.sensor_location = Position(
                 location.x if probe_x else self.sensor_location.x,
@@ -398,6 +399,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                 location.y if probe_y else (self.config_sensor_y if self.config_sensor_y is not None else 0.0),
                 location.z if probe_z else (self.config_sensor_z if self.config_sensor_z is not None else 0.0),
             )
+        self.last_result = location
         msg = "KTC Tools Calibrate: Sensor location at %.6f, %.6f, %.6f" % (
             self.sensor_location[0],
             self.sensor_location[1],
@@ -491,9 +493,11 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
 
         save_x, save_y, save_z = self._parse_axes(gcmd, default_all=False)
         if not (save_x or save_y or save_z):
-            save_x, save_y, save_z = self.last_probed_axes
-        if not (save_x or save_y or save_z):
-            save_x = save_y = save_z = True
+            save_x, save_y, save_z = (
+                self.last_probed_axes
+                if any(self.last_probed_axes)
+                else (True, True, True)
+            )
 
         # Legacy configfile.set support
         if gcmd.get("SECTION", None):
