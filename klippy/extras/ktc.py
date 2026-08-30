@@ -102,8 +102,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         try:
             self.tools_calibrate = typing.cast(
                 "ktc_tools_calibrate.KtcToolsCalibrate",
-                self.printer.lookup_object("ktc_tools_calibrate", None)
-                or self.printer.lookup_object("tools_calibrate", None),
+                self.printer.lookup_object("ktc_tools_calibrate", None),
             )
         except Exception:
             self.tools_calibrate = None

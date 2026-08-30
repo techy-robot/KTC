@@ -219,15 +219,15 @@ The log module needs no referenced in the configuration if using default options
 #   Usefull when debugging.
 ```
 
-## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) [tools_calibrate] / [ktc_tools_calibrate] (Tool Offset Calibration)
+## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) [ktc_tools_calibrate] (Tool Offset Calibration)
 
 Configures automated multi-tool nozzle offset calibration using a physical contact probe switch (e.g. sexbolt, 3-axis switch, or nudge probe).
 
 > [!NOTE]
-> Supports section header `[ktc_tools_calibrate]` or `[tools_calibrate]`. Offsets calibrated with `KTC_TOOL_CALIBRATE_OFFSET` / `KTC_TOOL_CALIBRATE_SAVE` are saved directly to KTC runtime objects and persistent variables (`~/ktc_variables.cfg`) without requiring firmware restarts.
+> Offsets calibrated with `KTC_TOOL_CALIBRATE_OFFSET` / `KTC_TOOL_CALIBRATE_SAVE` are saved directly to KTC runtime objects and persistent variables (`~/ktc_variables.cfg`) without requiring firmware restarts.
 
 ```ini
-[tools_calibrate]
+[ktc_tools_calibrate]
 #pin: ^!PG12
 #   MCU input pin connected to the physical tool calibration contact switch probe.
 #travel_speed: 150

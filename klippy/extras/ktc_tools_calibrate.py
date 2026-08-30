@@ -120,27 +120,6 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             desc=self.cmd_KTC_TOOL_CALIBRATE_QUERY_help,
         )
 
-        # Backward compatibility aliases (Viesturs / Kalico style)
-        self.gcode.register_command(
-            "TOOL_LOCATE_SENSOR",
-            self.cmd_KTC_TOOL_LOCATE_SENSOR,
-            desc=self.cmd_KTC_TOOL_LOCATE_SENSOR_help,
-        )
-        self.gcode.register_command(
-            "TOOL_CALIBRATE_TOOL_OFFSET",
-            self.cmd_KTC_TOOL_CALIBRATE_OFFSET,
-            desc=self.cmd_KTC_TOOL_CALIBRATE_OFFSET_help,
-        )
-        self.gcode.register_command(
-            "TOOL_CALIBRATE_SAVE_TOOL_OFFSET",
-            self.cmd_KTC_TOOL_CALIBRATE_SAVE,
-            desc=self.cmd_KTC_TOOL_CALIBRATE_SAVE_help,
-        )
-        self.gcode.register_command(
-            "TOOL_CALIBRATE_QUERY_PROBE",
-            self.cmd_KTC_TOOL_CALIBRATE_QUERY,
-            desc=self.cmd_KTC_TOOL_CALIBRATE_QUERY_help,
-        )
 
     def _handle_connect(self):
         """Bind KTC core and KtcLog once all printer objects are initialized."""
@@ -646,7 +625,3 @@ class ProbeEndstopWrapper:
 
 def load_config(config: "configfile.ConfigWrapper"):
     return KtcToolsCalibrate(config)
-
-
-# Backwards compatibility alias
-ToolsCalibrate = KtcToolsCalibrate

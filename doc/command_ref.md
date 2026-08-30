@@ -19,17 +19,17 @@
   | `KTC_TOOL_OFFSET_SAVE [TOOL=<name> \| T=<index>] [ [[X=<pos>] [Y=<pos>] [Z=<pos>]] \| [[X_ADJUST=<adjust>] [Y_ADJUST=<adjust>] [Z_ADJUST=<adjust>]] ]` | Save the positional offset of an individual tool to file so it can be used later. Reports the tool offset without global offsets if no offset parameter is provided. |
   <br>
 
-  ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Tool Offset Calibration Commands (`ktc_tools_calibrate` / `tools_calibrate`)
+  ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Tool Offset Calibration Commands (`ktc_tools_calibrate`)
 
 > [!NOTE]
-> Supports physical contact probe switches (e.g. sexbolt, nudge probe) for automated multi-tool nozzle offset calibration. Both native `KTC_` commands and legacy Viesturs `TOOL_` commands are supported. Saved offsets automatically sync to KTC persistent storage (`~/ktc_variables.cfg`) without requiring firmware restarts.
+> Supports physical contact probe switches (e.g. sexbolt, nudge probe) for automated multi-tool nozzle offset calibration. Saved offsets automatically sync to KTC persistent storage (`~/ktc_variables.cfg`) without requiring firmware restarts.
 
-| Command | Legacy Alias | Description |
-| --- | --- | --- |
-| `KTC_TOOL_LOCATE_SENSOR [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | `TOOL_LOCATE_SENSOR` | Locate reference pin coordinate using reference tool (T0). |
-| `KTC_TOOL_CALIBRATE_OFFSET [SAVE=0\|1] [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | `TOOL_CALIBRATE_TOOL_OFFSET` | Calibrate tool offset relative to reference sensor location. Pass `SAVE=1` to calibrate and persist to active/specified tool in one step. |
-| `KTC_TOOL_CALIBRATE_SAVE [TOOL=<name>\|global] [T=<index>] [SECTION=<name> ATTRIBUTE=<attr>] [MACRO=<name> VARIABLE=<var>] [VALUE=<format>]` | `TOOL_CALIBRATE_SAVE_TOOL_OFFSET` | Save calibrated tool offset directly to KTC tool object and persistent storage, or update global offset (`TOOL=global`). Falls back to config/macro variables if `SECTION` or `MACRO` is provided. |
-| `KTC_TOOL_CALIBRATE_QUERY` | `TOOL_CALIBRATE_QUERY_PROBE` | Query current trigger state of the calibration probe. |
+  | Command | Description |
+  | ------- | ----------- |
+  | `KTC_TOOL_LOCATE_SENSOR [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | Locate reference pin coordinate using reference tool (T0). |
+  | `KTC_TOOL_CALIBRATE_OFFSET [SAVE=0\|1] [PROBE_SPEED=<speed>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<dist>] [SAMPLES_TOLERANCE=<tol>] [SAMPLES_TOLERANCE_RETRIES=<retries>] [SAMPLES_RESULT=<median\|average>] [LIFT_SPEED=<speed>]` | Calibrate tool offset relative to reference sensor location. Pass `SAVE=1` to calibrate and persist to active/specified tool in one step. |
+  | `KTC_TOOL_CALIBRATE_SAVE [TOOL=<name>\|global] [T=<index>] [SECTION=<name> ATTRIBUTE=<attr>] [MACRO=<name> VARIABLE=<var>] [VALUE=<format>]` | Save calibrated tool offset directly to KTC tool object and persistent storage, or update global offset (`TOOL=global`). Falls back to config/macro variables if `SECTION` or `MACRO` is provided. |
+  | `KTC_TOOL_CALIBRATE_QUERY` | Query current trigger state of the calibration probe. |
 
   <br>
 
