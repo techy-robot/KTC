@@ -178,6 +178,26 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             "calibration_probe_inactive": self.calibration_probe_inactive,
         }
 
+    def _parse_axes(self, gcmd: "gcode.GCodeCommand") -> tuple[bool, bool, bool]:
+        probe_x = gcmd.get("X", None) is not None
+        probe_y = gcmd.get("Y", None) is not None
+        probe_z = gcmd.get("Z", None) is not None
+        axis_param = gcmd.get("AXIS", None)
+        if axis_param is not None:
+            axis_param = axis_param.upper()
+            if "ALL" in axis_param:
+                probe_x = probe_y = probe_z = True
+            else:
+                if "X" in axis_param:
+                    probe_x = True
+                if "Y" in axis_param:
+                    probe_y = True
+                if "Z" in axis_param:
+                    probe_z = True
+        if not (probe_x or probe_y or probe_z):
+            probe_x = probe_y = probe_z = True
+        return probe_x, probe_y, probe_z
+
     def probe_xy(
         self, toolhead, top_pos, direction, gcmd, spread, samples=None
     ):
@@ -203,18 +223,75 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             max_distance=spread[axis] * 1.8,
         )[axis]
 
-    def calibrate_xy(self, toolhead, top_pos, gcmd, spread, samples=None):
-        left_x = self.probe_xy(toolhead, top_pos, "x+", gcmd, spread, samples)
-        right_x = self.probe_xy(toolhead, top_pos, "x-", gcmd, spread, samples)
-        center_x = (left_x + right_x) / 2.0
-        top_pos = [center_x, top_pos[1], top_pos[2]]
-        near_y = self.probe_xy(toolhead, top_pos, "y+", gcmd, spread, samples)
-        far_y = self.probe_xy(toolhead, top_pos, "y-", gcmd, spread, samples)
-        return [center_x, (near_y + far_y) / 2.0]
+    def calibrate_xy(
+        self,
+        toolhead,
+        top_pos,
+        gcmd,
+        spread,
+        samples=None,
+        probe_x=True,
+        probe_y=True,
+    ):
+        center_x = top_pos[0]
+        center_y = top_pos[1]
+        if probe_x:
+            left_x = self.probe_xy(toolhead, top_pos, "x+", gcmd, spread, samples)
+            right_x = self.probe_xy(toolhead, top_pos, "x-", gcmd, spread, samples)
+            center_x = (left_x + right_x) / 2.0
+            top_pos = [center_x, top_pos[1], top_pos[2]]
+        if probe_y:
+            near_y = self.probe_xy(toolhead, top_pos, "y+", gcmd, spread, samples)
+            far_y = self.probe_xy(toolhead, top_pos, "y-", gcmd, spread, samples)
+            center_y = (near_y + far_y) / 2.0
+        return [center_x, center_y]
 
-    def locate_sensor(self, gcmd):
+    def locate_sensor(
+        self, gcmd, probe_x=True, probe_y=True, probe_z=True
+    ):
         toolhead = self.printer.lookup_object("toolhead")
         position = toolhead.get_position()
+
+        # If only probing Z:
+        if probe_z and not (probe_x or probe_y):
+            center_x = (
+                self.sensor_location.x if self.sensor_location else position[0]
+            )
+            center_y = (
+                self.sensor_location.y if self.sensor_location else position[1]
+            )
+            center_z = self.probe_multi_axis.run_probe("z-", gcmd)[2]
+            position[2] = center_z + self.final_lift_z
+            toolhead.manual_move([None, None, position[2]], self.lift_speed)
+            toolhead.set_position(position)
+            return Position(center_x, center_y, center_z)
+
+        # If probing lateral axes without Z:
+        if not probe_z and (probe_x or probe_y):
+            if self.sensor_location:
+                top_z = self.sensor_location.z
+            else:
+                top_z = self.probe_multi_axis.run_probe("z-", gcmd, samples=1)[2]
+            center_x, center_y = self.calibrate_xy(
+                toolhead,
+                [position[0], position[1], top_z],
+                gcmd,
+                self.spread,
+                probe_x=probe_x,
+                probe_y=probe_y,
+            )
+            center_z = top_z
+            position[0] = center_x
+            position[1] = center_y
+            position[2] = center_z + self.final_lift_z
+            toolhead.manual_move([None, None, position[2]], self.lift_speed)
+            toolhead.manual_move(
+                [position[0], position[1], None], self.travel_speed
+            )
+            toolhead.set_position(position)
+            return Position(center_x, center_y, center_z)
+
+        # Full or multi-axis probing with Z:
         downPos = self.probe_multi_axis.run_probe("z-", gcmd, samples=1)
         center_x, center_y = self.calibrate_xy(
             toolhead,
@@ -222,24 +299,35 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             gcmd,
             self.initial_spread,
             samples=1,
+            probe_x=probe_x,
+            probe_y=probe_y,
         )
 
         toolhead.manual_move(
             [None, None, downPos[2] + self.lift_z], self.lift_speed
         )
-        toolhead.manual_move([center_x, center_y, None], self.travel_speed)
+        toolhead.manual_move(
+            [
+                center_x if probe_x else None,
+                center_y if probe_y else None,
+                None,
+            ],
+            self.travel_speed,
+        )
         center_z = self.probe_multi_axis.run_probe("z-", gcmd, speed_ratio=0.5)[
             2
         ]
-        # Now redo X and Y, since we have a more accurate center.
+        # Redo X and Y with accurate center Z
         center_x, center_y = self.calibrate_xy(
             toolhead,
             [center_x, center_y, center_z],
             gcmd,
             self.spread,
+            probe_x=probe_x,
+            probe_y=probe_y,
         )
 
-        # rest above center
+        # Rest above center
         position[0] = center_x
         position[1] = center_y
         position[2] = center_z + self.final_lift_z
@@ -252,21 +340,34 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
 
     cmd_KTC_TOOL_LOCATE_SENSOR_help = (
         "Locate the tool calibration sensor, use with tool 0 or reference tool."
+        + "\n [X] [Y] [Z] or [AXIS=ALL|X|Y|Z]"
     )
 
     def cmd_KTC_TOOL_LOCATE_SENSOR(self, gcmd: "gcode.GCodeCommand"):
-        self.last_result = self.locate_sensor(gcmd)
-        self.sensor_location = self.last_result
+        probe_x, probe_y, probe_z = self._parse_axes(gcmd)
+        location = self.locate_sensor(
+            gcmd, probe_x=probe_x, probe_y=probe_y, probe_z=probe_z
+        )
+        if self.sensor_location is not None:
+            self.sensor_location = Position(
+                location.x if probe_x else self.sensor_location.x,
+                location.y if probe_y else self.sensor_location.y,
+                location.z if probe_z else self.sensor_location.z,
+            )
+        else:
+            self.sensor_location = location
+        self.last_result = self.sensor_location
         msg = "Sensor location at %.6f, %.6f, %.6f" % (
-            self.last_result[0],
-            self.last_result[1],
-            self.last_result[2],
+            self.sensor_location[0],
+            self.sensor_location[1],
+            self.sensor_location[2],
         )
         self.log_always(f"KTC Tools Calibrate: {msg}")
         self.gcode.respond_info(msg)
 
     cmd_KTC_TOOL_CALIBRATE_OFFSET_help = (
-        "Calibrate current tool offset relative to reference sensor location. [SAVE=0|1]"
+        "Calibrate current tool offset relative to reference sensor location."
+        + "\n [X] [Y] [Z] or [AXIS=ALL|X|Y|Z] [SAVE=0|1]"
     )
 
     def cmd_KTC_TOOL_CALIBRATE_OFFSET(self, gcmd: "gcode.GCodeCommand"):
@@ -274,10 +375,53 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             raise gcmd.error(
                 "No recorded sensor location, please run KTC_TOOL_LOCATE_SENSOR first"
             )
-        location = self.locate_sensor(gcmd)
-        self.last_result = Position(
-            *[location[i] - self.sensor_location[i] for i in range(3)]
+        probe_x, probe_y, probe_z = self._parse_axes(gcmd)
+        location = self.locate_sensor(
+            gcmd, probe_x=probe_x, probe_y=probe_y, probe_z=probe_z
         )
+
+        # Get existing offset for unprobed axes if available
+        existing_offset = [0.0, 0.0, 0.0]
+        if self.ktc is not None:
+            tool_param = gcmd.get("TOOL", None)
+            if tool_param is not None and tool_param.strip().lower() == "global":
+                existing_offset = list(self.ktc.global_offset)
+            else:
+                target_tool = None
+                if tool_param is not None or gcmd.get("T", None) is not None:
+                    target_tool = self.ktc.get_tool_from_gcmd(gcmd)
+                else:
+                    target_tool = self.ktc.active_tool
+                if (
+                    target_tool
+                    and target_tool != self.TOOL_UNKNOWN
+                    and target_tool != self.TOOL_NONE
+                ):
+                    existing_offset = list(target_tool.offset)
+        elif self.last_result is not None:
+            existing_offset = [
+                self.last_result.x,
+                self.last_result.y,
+                self.last_result.z,
+            ]
+
+        offset_x = (
+            (location[0] - self.sensor_location[0])
+            if probe_x
+            else existing_offset[0]
+        )
+        offset_y = (
+            (location[1] - self.sensor_location[1])
+            if probe_y
+            else existing_offset[1]
+        )
+        offset_z = (
+            (location[2] - self.sensor_location[2])
+            if probe_z
+            else existing_offset[2]
+        )
+        self.last_result = Position(offset_x, offset_y, offset_z)
+
         msg = "Tool offset is %.6f, %.6f, %.6f" % (
             self.last_result[0],
             self.last_result[1],
