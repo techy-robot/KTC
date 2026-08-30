@@ -236,6 +236,16 @@ Configures automated multi-tool nozzle offset calibration using a physical conta
 #   X/Y search radial distance (mm) from probe center when probing lateral edges.
 #lower_z: 0.5
 #   Z distance (mm) to lower nozzle below top Z contact point during lateral X/Y probing moves.
+#lift_z: 1.0
+#   Z distance (mm) to lift nozzle before lateral search moves.
+#final_lift_z: 4.0
+#   Clearance (mm) to lift nozzle above sensor after probing finishes.
+#sensor_x: 150.0
+#   (Optional) Nominal machine X coordinate of the calibration sensor pin.
+#sensor_y: 200.0
+#   (Optional) Nominal machine Y coordinate of the calibration sensor pin.
+#sensor_z: 10.0
+#   (Optional) Nominal machine Z coordinate of the calibration sensor pin.
 #speed: 3.0
 #   Movement speed (mm/s) during active probing contact moves.
 #lift_speed: 10.0

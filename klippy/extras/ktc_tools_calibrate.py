@@ -85,7 +85,9 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         self.lift_speed = config.getfloat(
             "lift_speed", self.probe_multi_axis.lift_speed
         )
-        self.final_lift_z = config.getfloat("final_lift_z", 4.0)
+        self.config_sensor_x = config.getfloat("sensor_x", default=None)
+        self.config_sensor_y = config.getfloat("sensor_y", default=None)
+        self.config_sensor_z = config.getfloat("sensor_z", default=None)
 
         self._reset_last_results(None)
 
@@ -156,7 +158,18 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             logging.info(msg)
 
     def _reset_last_results(self, eventtime=None):
-        self.sensor_location: typing.Optional[Position] = None
+        if (
+            self.config_sensor_x is not None
+            or self.config_sensor_y is not None
+            or self.config_sensor_z is not None
+        ):
+            self.sensor_location = Position(
+                self.config_sensor_x if self.config_sensor_x is not None else 0.0,
+                self.config_sensor_y if self.config_sensor_y is not None else 0.0,
+                self.config_sensor_z if self.config_sensor_z is not None else 0.0,
+            )
+        else:
+            self.sensor_location = None
         self.last_result: typing.Optional[Position] = None
         self.last_calibrated_tool: typing.Optional[str] = None
         self.last_probe_offset = 0.0
@@ -255,10 +268,14 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
         # If only probing Z:
         if probe_z and not (probe_x or probe_y):
             center_x = (
-                self.sensor_location.x if self.sensor_location else position[0]
+                self.sensor_location.x
+                if self.sensor_location
+                else (self.config_sensor_x if self.config_sensor_x is not None else position[0])
             )
             center_y = (
-                self.sensor_location.y if self.sensor_location else position[1]
+                self.sensor_location.y
+                if self.sensor_location
+                else (self.config_sensor_y if self.config_sensor_y is not None else position[1])
             )
             center_z = self.probe_multi_axis.run_probe("z-", gcmd)[2]
             position[2] = center_z + self.final_lift_z
@@ -268,8 +285,10 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
 
         # If probing lateral axes without Z:
         if not probe_z and (probe_x or probe_y):
-            if self.sensor_location:
+            if self.sensor_location and self.sensor_location.z != 0.0:
                 top_z = self.sensor_location.z
+            elif self.config_sensor_z is not None:
+                top_z = self.config_sensor_z
             else:
                 top_z = self.probe_multi_axis.run_probe("z-", gcmd, samples=1)[2]
             center_x, center_y = self.calibrate_xy(
@@ -355,7 +374,11 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
                 location.z if probe_z else self.sensor_location.z,
             )
         else:
-            self.sensor_location = location
+            self.sensor_location = Position(
+                location.x if probe_x else (self.config_sensor_x if self.config_sensor_x is not None else 0.0),
+                location.y if probe_y else (self.config_sensor_y if self.config_sensor_y is not None else 0.0),
+                location.z if probe_z else (self.config_sensor_z if self.config_sensor_z is not None else 0.0),
+            )
         self.last_result = self.sensor_location
         msg = "Sensor location at %.6f, %.6f, %.6f" % (
             self.sensor_location[0],
@@ -373,7 +396,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
     def cmd_KTC_TOOL_CALIBRATE_OFFSET(self, gcmd: "gcode.GCodeCommand"):
         if not self.sensor_location:
             raise gcmd.error(
-                "No recorded sensor location, please run KTC_TOOL_LOCATE_SENSOR first"
+                "No recorded sensor location, please run KTC_TOOL_LOCATE_SENSOR first or define sensor_x, sensor_y, sensor_z in config."
             )
         probe_x, probe_y, probe_z = self._parse_axes(gcmd)
         location = self.locate_sensor(
