@@ -79,6 +79,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
 
         self.lower_z = config.getfloat("lower_z", 0.5)
         self.lift_z = config.getfloat("lift_z", 1.0)
+        self.final_lift_z = config.getfloat("final_lift_z", 4.0)
         self.trigger_to_bottom_z = config.getfloat(
             "trigger_to_bottom_z", default=0.0
         )
