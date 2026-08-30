@@ -25,7 +25,7 @@ if typing.TYPE_CHECKING:
         # gcode_move as klippy_gcode_move,
         fan_generic as klippy_fan_generic,
     )
-    from . import ktc_log, ktc_persisting, ktc_toolchanger, ktc_tool, ktc_heater
+    from . import ktc_log, ktc_persisting, ktc_toolchanger, ktc_tool, ktc_heater, ktc_tools_calibrate
 
 # Constants for the restore_axis_on_toolchange variable.
 XYZ_TO_INDEX: dict[str, int] = {"x": 0, "X": 0, "y": 1, "Y": 1, "z": 2, "Z": 2}
@@ -85,6 +85,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         self._saved_position = [None, None, None]
 
         self.global_offset = [0.0, 0.0, 0.0]  # Global offset for all tools.
+        self.tools_calibrate: typing.Optional["ktc_tools_calibrate.KtcToolsCalibrate"] = None
 
         # Register events
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
@@ -97,6 +98,15 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         self.log = typing.cast(  # pylint: disable=attribute-defined-outside-init
             "ktc_log.KtcLog", self.printer.lookup_object("ktc_log")
         )
+
+        try:
+            self.tools_calibrate = typing.cast(
+                "ktc_tools_calibrate.KtcToolsCalibrate",
+                self.printer.lookup_object("ktc_tools_calibrate", None)
+                or self.printer.lookup_object("tools_calibrate", None),
+            )
+        except Exception:
+            self.tools_calibrate = None
 
         ############################
         # Configure default toolchanger and tools

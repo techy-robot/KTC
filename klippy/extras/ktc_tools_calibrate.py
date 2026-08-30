@@ -6,11 +6,22 @@
 # - Originally sourced from https://github.com/ben5459/Klipper_ToolChanger/blob/master/probe_multi_axis.py, includes code by Kevin O'Connor <kevin@koconnor.net> and Martin Hierholzer <martin@hierholzer.info>
 # - Ben5459 forked https://github.com/TypQxQ/Klipper_ToolChanger (KTCC V1)
 
+from __future__ import annotations
 import collections
 import enum
 import logging
+import typing
 
 from klippy import pins
+
+from .ktc_base import (
+    KtcBaseClass,
+    KtcConstantsClass,
+)
+
+if typing.TYPE_CHECKING:
+    from ...klipper.klippy import configfile, gcode
+    from . import ktc, ktc_log, ktc_tool, ktc_persisting
 
 
 class Axis(enum.IntEnum):
@@ -38,12 +49,17 @@ position can be negative).
 """
 
 
-class ToolsCalibrate:
-    def __init__(self, config):
+class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
+    def __init__(self, config: "configfile.ConfigWrapper"):
+        super().__init__(config)
         self.printer = config.get_printer()
         self.name = config.get_name()
+        self.ktc: typing.Optional["ktc.Ktc"] = None
+        self.log: typing.Optional["ktc_log.KtcLog"] = None
+
         self.gcode_move = self.printer.load_object(config, "gcode_move")
         self.probe_multi_axis = PrinterProbeMultiAxis(
+            self,
             config,
             ProbeEndstopWrapper(config, "x"),
             ProbeEndstopWrapper(config, "y"),
@@ -74,43 +90,112 @@ class ToolsCalibrate:
         self._reset_last_results(None)
 
         # Register events
+        self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler(
             "stepper_enable:motor_off", self._reset_last_results
         )
 
         # Register commands
         self.gcode = self.printer.lookup_object("gcode")
+
+        # Standard KTC commands
+        self.gcode.register_command(
+            "KTC_TOOL_LOCATE_SENSOR",
+            self.cmd_KTC_TOOL_LOCATE_SENSOR,
+            desc=self.cmd_KTC_TOOL_LOCATE_SENSOR_help,
+        )
+        self.gcode.register_command(
+            "KTC_TOOL_CALIBRATE_OFFSET",
+            self.cmd_KTC_TOOL_CALIBRATE_OFFSET,
+            desc=self.cmd_KTC_TOOL_CALIBRATE_OFFSET_help,
+        )
+        self.gcode.register_command(
+            "KTC_TOOL_CALIBRATE_SAVE",
+            self.cmd_KTC_TOOL_CALIBRATE_SAVE,
+            desc=self.cmd_KTC_TOOL_CALIBRATE_SAVE_help,
+        )
+        self.gcode.register_command(
+            "KTC_TOOL_CALIBRATE_QUERY",
+            self.cmd_KTC_TOOL_CALIBRATE_QUERY,
+            desc=self.cmd_KTC_TOOL_CALIBRATE_QUERY_help,
+        )
+
+        # Backward compatibility aliases (Viesturs / Kalico style)
         self.gcode.register_command(
             "TOOL_LOCATE_SENSOR",
-            self.cmd_TOOL_LOCATE_SENSOR,
-            desc=self.cmd_TOOL_LOCATE_SENSOR_help,
+            self.cmd_KTC_TOOL_LOCATE_SENSOR,
+            desc=self.cmd_KTC_TOOL_LOCATE_SENSOR_help,
         )
         self.gcode.register_command(
             "TOOL_CALIBRATE_TOOL_OFFSET",
-            self.cmd_TOOL_CALIBRATE_TOOL_OFFSET,
-            desc=self.cmd_TOOL_CALIBRATE_TOOL_OFFSET_help,
+            self.cmd_KTC_TOOL_CALIBRATE_OFFSET,
+            desc=self.cmd_KTC_TOOL_CALIBRATE_OFFSET_help,
         )
         self.gcode.register_command(
             "TOOL_CALIBRATE_SAVE_TOOL_OFFSET",
-            self.cmd_TOOL_CALIBRATE_SAVE_TOOL_OFFSET,
-            desc=self.cmd_TOOL_CALIBRATE_SAVE_TOOL_OFFSET_help,
+            self.cmd_KTC_TOOL_CALIBRATE_SAVE,
+            desc=self.cmd_KTC_TOOL_CALIBRATE_SAVE_help,
         )
         self.gcode.register_command(
             "TOOL_CALIBRATE_QUERY_PROBE",
-            self.cmd_TOOL_CALIBRATE_QUERY_PROBE,
-            desc=self.cmd_TOOL_CALIBRATE_QUERY_PROBE_help,
+            self.cmd_KTC_TOOL_CALIBRATE_QUERY,
+            desc=self.cmd_KTC_TOOL_CALIBRATE_QUERY_help,
         )
 
+    def _handle_connect(self):
+        """Bind KTC core and KtcLog once all printer objects are initialized."""
+        try:
+            self.log = typing.cast(
+                "ktc_log.KtcLog", self.printer.lookup_object("ktc_log", None)
+            )
+        except Exception:
+            self.log = None
+
+        try:
+            self.ktc = typing.cast(
+                "ktc.Ktc", self.printer.lookup_object("ktc", None)
+            )
+        except Exception:
+            self.ktc = None
+
+    def log_debug(self, msg: str):
+        if self.log is not None:
+            self.log.debug(msg)
+        else:
+            logging.debug(msg)
+
+    def log_trace(self, msg: str):
+        if self.log is not None:
+            self.log.trace(msg)
+        else:
+            logging.debug(msg)
+
+    def log_always(self, msg: str):
+        if self.log is not None:
+            self.log.always(msg)
+        else:
+            logging.info(msg)
+
     def _reset_last_results(self, eventtime=None):
-        self.sensor_location = None
-        self.last_result = None
+        self.sensor_location: typing.Optional[Position] = None
+        self.last_result: typing.Optional[Position] = None
+        self.last_calibrated_tool: typing.Optional[str] = None
         self.last_probe_offset = 0.0
         self.calibration_probe_inactive = True
 
-    def get_status(self, eventtime):
+    def get_status(self, eventtime=None):
         return {
-            "sensor_location": self.sensor_location,
-            "last_result": self.last_result,
+            "sensor_location": (
+                [self.sensor_location.x, self.sensor_location.y, self.sensor_location.z]
+                if self.sensor_location
+                else None
+            ),
+            "last_result": (
+                [self.last_result.x, self.last_result.y, self.last_result.z]
+                if self.last_result
+                else None
+            ),
+            "last_calibrated_tool": self.last_calibrated_tool,
             "calibration_probe_inactive": self.calibration_probe_inactive,
         }
 
@@ -120,8 +205,8 @@ class ToolsCalibrate:
         [axis, offset] = Directions[direction]
         start_pos = list(top_pos)
         start_pos[axis] -= offset * spread[axis]
-        logging.info(
-            f"tools_calibrate: probe_xy({top_pos=}, {start_pos=}, {direction=})"
+        self.log_trace(
+            f"ktc_tools_calibrate: probe_xy({top_pos=}, {start_pos=}, {direction=})"
         )
         toolhead.manual_move(
             [None, None, top_pos[2] + self.lift_z], self.lift_speed
@@ -186,47 +271,63 @@ class ToolsCalibrate:
         toolhead.set_position(position)
         return Position(center_x, center_y, center_z)
 
-    cmd_TOOL_LOCATE_SENSOR_help = (
-        "Locate the tool calibration sensor, use with tool 0."
+    cmd_KTC_TOOL_LOCATE_SENSOR_help = (
+        "Locate the tool calibration sensor, use with tool 0 or reference tool."
     )
 
-    def cmd_TOOL_LOCATE_SENSOR(self, gcmd):
+    def cmd_KTC_TOOL_LOCATE_SENSOR(self, gcmd: "gcode.GCodeCommand"):
         self.last_result = self.locate_sensor(gcmd)
         self.sensor_location = self.last_result
-        self.gcode.respond_info(
-            "Sensor location at %.6f,%.6f,%.6f"
-            % (self.last_result[0], self.last_result[1], self.last_result[2])
+        msg = "Sensor location at %.6f, %.6f, %.6f" % (
+            self.last_result[0],
+            self.last_result[1],
+            self.last_result[2],
         )
+        self.log_always(f"KTC Tools Calibrate: {msg}")
+        self.gcode.respond_info(msg)
 
-    cmd_TOOL_CALIBRATE_TOOL_OFFSET_help = (
-        "Calibrate current tool offset relative to tool 0"
+    cmd_KTC_TOOL_CALIBRATE_OFFSET_help = (
+        "Calibrate current tool offset relative to reference sensor location. [SAVE=0|1]"
     )
 
-    def cmd_TOOL_CALIBRATE_TOOL_OFFSET(self, gcmd):
+    def cmd_KTC_TOOL_CALIBRATE_OFFSET(self, gcmd: "gcode.GCodeCommand"):
         if not self.sensor_location:
             raise gcmd.error(
-                "No recorded sensor location, please run TOOL_LOCATE_SENSOR first"
+                "No recorded sensor location, please run KTC_TOOL_LOCATE_SENSOR first"
             )
         location = self.locate_sensor(gcmd)
         self.last_result = Position(
             *[location[i] - self.sensor_location[i] for i in range(3)]
         )
-        self.gcode.respond_info(
-            "Tool offset is %.6f,%.6f,%.6f"
-            % (self.last_result[0], self.last_result[1], self.last_result[2])
+        msg = "Tool offset is %.6f, %.6f, %.6f" % (
+            self.last_result[0],
+            self.last_result[1],
+            self.last_result[2],
         )
+        self.log_always(f"KTC Tools Calibrate: {msg}")
+        self.gcode.respond_info(msg)
 
-    cmd_TOOL_CALIBRATE_SAVE_TOOL_OFFSET_help = (
-        "Save tool offset calibration to config"
+        save_param = gcmd.get("SAVE", None)
+        if save_param is not None and self.parse_bool(save_param):
+            self.save_tool_offset(gcmd)
+
+    cmd_KTC_TOOL_CALIBRATE_SAVE_help = (
+        "Save tool offset calibration to KTC persistent storage or config."
+        + "\n [TOOL: Tool name | global] or [T: Tool number]"
+        + "\n [SECTION: Config section] [ATTRIBUTE: Config attribute]"
+        + "\n [MACRO: Macro name] [VARIABLE: Macro variable]"
     )
 
-    def cmd_TOOL_CALIBRATE_SAVE_TOOL_OFFSET(self, gcmd):
-        if not self.last_result:
-            gcmd.error(
-                "No offset result, please run TOOL_CALIBRATE_TOOL_OFFSET first"
-            )
-            return
+    def cmd_KTC_TOOL_CALIBRATE_SAVE(self, gcmd: "gcode.GCodeCommand"):
+        self.save_tool_offset(gcmd)
 
+    def save_tool_offset(self, gcmd: "gcode.GCodeCommand"):
+        if not self.last_result:
+            raise gcmd.error(
+                "No offset result, please run KTC_TOOL_CALIBRATE_OFFSET first"
+            )
+
+        # Legacy configfile.set support
         if gcmd.get("SECTION", None):
             section_name = gcmd.get("SECTION")
             param_name = gcmd.get("ATTRIBUTE")
@@ -234,33 +335,89 @@ class ToolsCalibrate:
             value = template.format(
                 x=self.last_result.x, y=self.last_result.y, z=self.last_result.z
             )
-
             configfile = self.printer.lookup_object("configfile")
             configfile.set(section_name, param_name, value)
+            self.gcode.respond_info(
+                f"Saved offset to config [{section_name}] {param_name} = {value}"
+            )
+            return
 
-        elif gcmd.get("MACRO", None):
+        # Legacy gcode macro variable support
+        if gcmd.get("MACRO", None):
             macro_name = gcmd.get("MACRO")
             variable_name = gcmd.get("VARIABLE")
             template = gcmd.get("VALUE", "({x:0.6f}, {y:0.6f}, {z:0.6f})")
             value = template.format(
                 x=self.last_result.x, y=self.last_result.y, z=self.last_result.z
             )
-
             self.gcode.run_script_from_command(
                 f'SET_GCODE_VARIABLE MACRO="{macro_name}" VARIABLE="{variable_name}" VALUE="{value}"'
             )
+            self.gcode.respond_info(
+                f"Saved offset to macro variable [{macro_name}] {variable_name} = {value}"
+            )
+            return
 
-    cmd_TOOL_CALIBRATE_QUERY_PROBE_help = (
+        # KTC native persistence & tool model integration
+        if self.ktc is not None:
+            tool_param = gcmd.get("TOOL", None)
+            if tool_param is not None and tool_param.strip().lower() == "global":
+                self.ktc.global_offset = [
+                    self.last_result.x,
+                    self.last_result.y,
+                    self.last_result.z,
+                ]
+                self.ktc.persistent_state_set("global_offset", self.ktc.global_offset)
+                msg = f"KTC Global offset set to: {self.ktc.global_offset}"
+                self.log_always(msg)
+                self.gcode.respond_info(msg)
+                return
+
+            # Resolve target tool
+            target_tool: typing.Optional["ktc_tool.KtcTool"] = None
+            if tool_param is not None or gcmd.get("T", None) is not None:
+                target_tool = self.ktc.get_tool_from_gcmd(gcmd)
+            else:
+                target_tool = self.ktc.active_tool
+
+            if (
+                target_tool is None
+                or target_tool == self.TOOL_UNKNOWN
+                or target_tool == self.TOOL_NONE
+            ):
+                raise gcmd.error(
+                    "No active tool mounted and no TOOL or T parameter provided. "
+                    "Specify TOOL=<name> or T=<number>."
+                )
+
+            new_offset = [
+                round(self.last_result.x, 6),
+                round(self.last_result.y, 6),
+                round(self.last_result.z, 6),
+            ]
+            target_tool.offset = new_offset
+            target_tool.persistent_state_set("offset", target_tool.offset)
+            self.last_calibrated_tool = target_tool.name
+            msg = f"KTC Tool {target_tool.name} offset set to: {target_tool.offset}"
+            self.log_always(msg)
+            self.gcode.respond_info(msg)
+            return
+
+        raise gcmd.error(
+            "KTC core is not loaded and no SECTION or MACRO parameter was specified."
+        )
+
+    cmd_KTC_TOOL_CALIBRATE_QUERY_help = (
         "Return the state of calibration probe"
     )
 
-    def cmd_TOOL_CALIBRATE_QUERY_PROBE(self, gcmd):
+    def cmd_KTC_TOOL_CALIBRATE_QUERY(self, gcmd: "gcode.GCodeCommand"):
         toolhead = self.printer.lookup_object("toolhead")
         print_time = toolhead.get_last_move_time()
         endstop_states = [
             probe.query_endstop(print_time)
             for probe in self.probe_multi_axis.mcu_probe
-        ]  # Check the state of each axis probe (x, y, z)
+        ]
         self.calibration_probe_inactive = any(endstop_states)
         gcmd.respond_info(
             "Calibration Probe: %s"
@@ -269,7 +426,15 @@ class ToolsCalibrate:
 
 
 class PrinterProbeMultiAxis:
-    def __init__(self, config, mcu_probe_x, mcu_probe_y, mcu_probe_z):
+    def __init__(
+        self,
+        tools_calibrate: KtcToolsCalibrate,
+        config: "configfile.ConfigWrapper",
+        mcu_probe_x: ProbeEndstopWrapper,
+        mcu_probe_y: ProbeEndstopWrapper,
+        mcu_probe_z: ProbeEndstopWrapper,
+    ):
+        self.tools_calibrate = tools_calibrate
         self.printer = config.get_printer()
         self.name = config.get_name()
         self.mcu_probe = [mcu_probe_x, mcu_probe_y, mcu_probe_z]
@@ -326,7 +491,6 @@ class PrinterProbeMultiAxis:
             if "Timeout during endstop homing" in reason:
                 reason += HINT_TIMEOUT
             raise self.printer.command_error(reason)
-        # self.gcode.respond_info("probe at %.3f,%.3f is z=%.6f"
         self.gcode.respond_info(
             "Probe made contact at %.6f,%.6f,%.6f" % (epos[0], epos[1], epos[2])
         )
@@ -345,7 +509,7 @@ class PrinterProbeMultiAxis:
         kin_status = toolhead.get_kinematics().get_status(curtime)
         if "axis_minimum" not in kin_status or "axis_maximum" not in kin_status:
             raise self.gcode.error(
-                "Tools calibrate only works with cartesian kinematics"
+                "Tools calibrate only works with kinematics that support axis minimum/maximum limits."
             )
         if sense > 0:
             pos[axis] = min(
@@ -384,12 +548,14 @@ class PrinterProbeMultiAxis:
         if direction not in Directions:
             raise self.printer.command_error("Wrong value for DIRECTION.")
 
-        logging.info("tools_calibrate: run_probe direction = " + str(direction))
+        self.tools_calibrate.log_trace(
+            "ktc_tools_calibrate: run_probe direction = " + str(direction)
+        )
 
         (axis, sense) = Directions[direction]
 
-        logging.info(
-            "tools_calibrate: run_probe axis = %d, sense = %d" % (axis, sense)
+        self.tools_calibrate.log_trace(
+            "ktc_tools_calibrate: run_probe axis = %d, sense = %d" % (axis, sense)
         )
 
         lift_speed = self.get_lift_speed(gcmd)
@@ -413,8 +579,8 @@ class PrinterProbeMultiAxis:
         while len(positions) < sample_count:
             # Probe position
             pos = self._probe(speed, axis, sense, max_distance)
-            logging.info(
-                f"tools_calibrate: run_probe result {probe_start=} {pos=}"
+            self.tools_calibrate.log_trace(
+                f"ktc_tools_calibrate: run_probe result {probe_start=} {pos=}"
             )
             positions.append(pos)
             # Check samples tolerance
@@ -478,5 +644,9 @@ class ProbeEndstopWrapper:
         return 0.0
 
 
-def load_config(config):
-    return ToolsCalibrate(config)
+def load_config(config: "configfile.ConfigWrapper"):
+    return KtcToolsCalibrate(config)
+
+
+# Backwards compatibility alias
+ToolsCalibrate = KtcToolsCalibrate
