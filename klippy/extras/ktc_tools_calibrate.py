@@ -360,7 +360,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
 
     cmd_KTC_TOOL_LOCATE_SENSOR_help = (
         "Locate the tool calibration sensor, use with tool 0 or reference tool."
-        + "\n [X] [Y] [Z] or [AXIS=ALL|X|Y|Z]"
+        + "\n [AXIS=ALL|X|Y|Z] or [X=1] [Y=1] [Z=1]"
     )
 
     def cmd_KTC_TOOL_LOCATE_SENSOR(self, gcmd: "gcode.GCodeCommand"):
@@ -391,7 +391,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
 
     cmd_KTC_TOOL_CALIBRATE_OFFSET_help = (
         "Calibrate current tool offset relative to reference sensor location."
-        + "\n [X] [Y] [Z] or [AXIS=ALL|X|Y|Z] [SAVE=0|1]"
+        + "\n [AXIS=ALL|X|Y|Z] or [X=1] [Y=1] [Z=1] [SAVE=0|1]"
     )
 
     def cmd_KTC_TOOL_CALIBRATE_OFFSET(self, gcmd: "gcode.GCodeCommand"):
