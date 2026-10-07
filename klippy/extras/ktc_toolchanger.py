@@ -73,7 +73,7 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
         # Sanity check. If the parent tool is not defined,
         # the init_order should be set to independent.
         if (self.init_order != self.InitOrderType.INDEPENDENT and
-            self.parent_tool is not None
+            self.parent_tool is None
             ):
             raise Exception(
                 "Toolchanger %s has no parent tool " % self.name

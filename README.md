@@ -42,8 +42,12 @@ This is a fork of [KTC V2](https://github.com/TypQxQ/KTC/) to fix general usabil
 
 <br>
 
-## Fork Features & Bug Fixes:
+## Fork Bug Fixes & Features:
 
+- Added optional probe axis's
+- Added probe stats to tools calibrate
+- (Bug) Fixed Init check for toolchanger
+- Integrated `ktc_tools_calibrate` for automated multi-tool X/Y/Z offset calibration (based on viesturz tools_calibrate)
 - (Bug) Installation script not executable by default causing moonraker to tweak out
 - (Bug) Race condition on restart from a GUI causing KTC to halt the startup process. Caused by not have proper init values
 - (cleanup) Moved /extensions to /klippy/extras like most other extra's repositories

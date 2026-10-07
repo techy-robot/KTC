@@ -10,6 +10,8 @@
   - `params_available` - List of available custom parameters as specified in the configuration file.
   - `params_*` - parameter in the above list.
 
+
+
 ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) **Tool** - The tool calling this macro is referenced as `myself` in `tool_select_gcode:` and `tool_deselect_gcode:`. One can write `{myself.name}` which would return `3` for a tool named so.
   - `name` - Tool name. 0, 1, 2, etc.
   - `number` - Tool number.

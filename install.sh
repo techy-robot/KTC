@@ -18,20 +18,41 @@ set -e
 # Get the root path of the repo, aka, where this script is executing
 REPO_DIR=$(realpath $(dirname "$0"))
 
-# This is where Klipper is installed
+# Default paths
 KLIPPER_HOME="${HOME}/klipper"
+KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
+OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
+MOONRAKER_HOME="${HOME}/moonraker"
+FORCE_YES=0
+
+# Parse arguments
+while getopts "k:c:m:yh" opt; do
+    case "${opt}" in
+        k) KLIPPER_HOME="${OPTARG}" ;;
+        c) KLIPPER_CONFIG_HOME="${OPTARG}" ;;
+        m) MOONRAKER_HOME="${OPTARG}" ;;
+        y) FORCE_YES=1 ;;
+        h)
+            echo "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-y]"
+            exit 0
+            ;;
+        *)
+            ;;
+    esac
+done
+
+if [[ "$*" == *"-y"* ]]; then
+    FORCE_YES=1
+fi
 
 # This is where the extension are downloaded to, a subdirectory of the repo.
 EXTENSION_PATH="${REPO_DIR}/klippy/extras"
 
-# This is where Moonraker is installed
-MOONRAKER_HOME="${HOME}/moonraker"
-
-# This is where Klipper config files are stored
-KLIPPER_CONFIG_HOME="${HOME}/printer_data/config"
-
-# This is where Klipper config files were stored before the 0.10.0 release
-OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
+if [[ -e ${KLIPPER_HOME}/klippy/plugins/ ]]; then
+    KLIPPER_PLUGINS_PATH="${KLIPPER_HOME}/klippy/plugins/"
+else
+    KLIPPER_PLUGINS_PATH="${KLIPPER_HOME}/klippy/extras/"
+fi
 
 #
 # Console Write Helpers
@@ -146,8 +167,22 @@ link_extension()
     log_blank
     log_header "Linking extension files to Klipper..."
 
+    for plugin in "${KLIPPER_PLUGINS_PATH}"*; do
+        if [ -L "${plugin}" ]; then
+            target=$(readlink "${plugin}")
+            real_target=$(readlink -f "${plugin}" 2>/dev/null || true)
+            if [[ "${target}" == *"${EXTENSION_PATH}"* ]] || [[ "${real_target}" == *"${EXTENSION_PATH}"* ]]; then
+                filename=$(basename "${plugin}")
+                if [ ! -f "${EXTENSION_PATH}/${filename}" ]; then
+                    log_info "Removing no longer referenced file: (${filename})."
+                    rm -f "${plugin}"
+                fi
+            fi
+        fi
+    done
+
     for file in $(cd ${EXTENSION_PATH}/ ; ls *.py); do
-        ln -sf "${EXTENSION_PATH}/${file}" "${KLIPPER_HOME}/klippy/extras/${file}"
+        ln -sf "${EXTENSION_PATH}/${file}" "${KLIPPER_PLUGINS_PATH}/${file}"
         log_info "Linking extension file: (${file})."
     done
 }
@@ -191,43 +226,6 @@ install_update_manager() {
 # Logic to install the configuration to Klipper
 # 
 install_klipper_config() {
-    log_header "Adding configuration to printer.cfg"
-
-    # Add configuration to printer.cfg if it doesn't exist
-    dest=${KLIPPER_CONFIG_HOME}/printer.cfg
-    if test -f $dest; then
-        # Backup the original printer.cfg file
-        next_dest="$(nextfilename "$dest")"
-        log_info "Copying original printer.cfg file to ${next_dest}"
-        cp ${dest} ${next_dest}
-
-        # Add the configuration to printer.cfg
-        # This example assumes that that both the server and the webcam stream are running on the same machine as Klipper
-        # The ktc section is not needed if a tool is configured but loaded here for the macros to work if no tool is configured
-        already_included=$(grep -c "\[ktc\]" ${dest} || true)
-        if [ "${already_included}" -eq 0 ]; then
-            echo "" >> "${dest}"    # Add a blank line
-            echo "" >> "${dest}"    # Add a blank line
-            echo -e "[ktc]" >> "${dest}"    # Add the section header
-
-            log_info "Added KTC configuration to printer.cfg"
-            log_important "Please check the configuration in printer.cfg and adjust it as needed"
-        else
-            log_error "[ktc] already exists in printer.cfg - skipping adding it there"
-        fi
-
-        # Add the inclusion of macros to printer.cfg if it doesn't exist
-        already_included=$(grep -c "\[include ktc/base/*.cfg\]" ${dest} || true)
-        if [ "${already_included}" -eq 0 ]; then
-            echo "" >> "${dest}"    # Add a blank line
-            echo -e "[include ktc/base/*.cfg]" >> "${dest}"    # Add the section header
-            echo -e "[include ktc/optional_rrf_compability/*.cfg]" >> "${dest}"    # Add the section header
-        else
-            log_error "[include ktc/base/*.cfg] already exists in printer.cfg - skipping adding it and the optional macros there"
-        fi
-    else
-        log_error "File printer.cfg file not found! Cannot add KTC configuration. Do it manually."
-    fi
 
     if [ ! -d "${KLIPPER_CONFIG_HOME}/ktc" ]; then
         log_info "Creating the ${KLIPPER_CONFIG_HOME}/ktc directory"
@@ -249,6 +247,7 @@ install_klipper_config() {
     else
         log_error "Optional RRF compability macros already exists in ${KLIPPER_CONFIG_HOME}/ktc/optional_rrf_compability - skipping copying it there"
     fi
+
     # Restart Klipper
     restart_klipper
 
@@ -256,8 +255,12 @@ install_klipper_config() {
 
 # 
 # Logic to ask a question and get a yes or no answer while displaying a prompt under installation
-# 
 prompt_yn() {
+    if [ "${FORCE_YES}" = "1" ] || [ ! -t 0 ]; then
+        echo "y"
+        return 0
+    fi
+
     while true; do
         read -n1 -p "
 $@ (y/n)? " yn
@@ -273,6 +276,23 @@ $@ (y/n)? " yn
         esac
     done
 }
+
+# Make sure we aren't running as root
+verify_ready
+
+# Check that Klipper is installed
+check_klipper
+
+# Check that the home directories are valid
+verify_home_dirs
+
+# Check if KTC is already installed (update mode)
+IS_UPDATE=0
+if [ -f "${KLIPPER_CONFIG_HOME}/moonraker.conf" ] && grep -q "\[update_manager KTC\]" "${KLIPPER_CONFIG_HOME}/moonraker.conf"; then
+    IS_UPDATE=1
+elif [ -d "${KLIPPER_CONFIG_HOME}/ktc" ]; then
+    IS_UPDATE=1
+fi
 
 log_blank
 log_blank
@@ -313,36 +333,30 @@ log_header "                     KTC"
 log_header "   Klipper Tool Changer code (v2)"
 log_blank
 log_blank
-log_important "KTC is used to facilitate toolchanging under Klipper."
-log_blank
-log_info "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
-log_blank
-log_blank
-log_important "This script will install the KTC extensions and macros."
-log_important "It will add the base configuration in printer.cfg and moonraker.conf."
-log_blank
-yn=$(prompt_yn "Do you want to continue?")
-echo
-case $yn in
-    y)
-        ;;
-    n)
-        log_info "You can run this script again later to install KTC."
-        log_blank
-    exit 0
-        ;;
-esac
 
-
-
-# Make sure we aren't running as root
-verify_ready
-
-# Check that Klipper is installed
-check_klipper
-
-# Check that the home directories are valid
-verify_home_dirs
+if [ "${IS_UPDATE}" -eq 1 ]; then
+    log_important "KTC update detected. Updating extensions and configuration..."
+else
+    log_important "KTC is used to facilitate toolchanging under Klipper."
+    log_blank
+    log_info "Usage: $0 [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>] [-y]"
+    log_blank
+    log_blank
+    log_important "This script will install the KTC extensions and macros."
+    log_important "It will add the base configuration in printer.cfg and moonraker.conf."
+    log_blank
+    yn=$(prompt_yn "Do you want to continue?")
+    echo
+    case $yn in
+        y)
+            ;;
+        n)
+            log_info "You can run this script again later to install KTC."
+            log_blank
+            exit 0
+            ;;
+    esac
+fi
 
 # Link the extension to Klipper
 link_extension

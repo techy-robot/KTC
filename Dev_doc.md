@@ -256,6 +256,7 @@ ktc_tool.py is initialized for each tool.
 
 
 
+
 - If final_selected has same changer as active_tool.
     - Deselect active_tool and continue selecting final_selected.
 - Else
