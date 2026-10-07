@@ -309,7 +309,7 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             elif self.config_sensor_z is not None:
                 top_z = self.config_sensor_z
             else:
-                top_z = self.probe_multi_axis.run_probe("z-", gcmd, samples=1)[2]
+                top_z = self.probe_multi_axis.run_probe("z-", gcmd)[2]
             center_x, center_y = self.calibrate_xy(
                 toolhead,
                 [position[0], position[1], top_z],
@@ -330,35 +330,10 @@ class KtcToolsCalibrate(KtcBaseClass, KtcConstantsClass):
             return Position(center_x, center_y, center_z)
 
         # Full or multi-axis probing with Z:
-        downPos = self.probe_multi_axis.run_probe("z-", gcmd, samples=1)
+        center_z = self.probe_multi_axis.run_probe("z-", gcmd)[2]
         center_x, center_y = self.calibrate_xy(
             toolhead,
-            downPos,
-            gcmd,
-            self.initial_spread,
-            samples=1,
-            probe_x=probe_x,
-            probe_y=probe_y,
-        )
-
-        toolhead.manual_move(
-            [None, None, downPos[2] + self.lift_z], self.lift_speed
-        )
-        toolhead.manual_move(
-            [
-                center_x if probe_x else None,
-                center_y if probe_y else None,
-                None,
-            ],
-            self.travel_speed,
-        )
-        center_z = self.probe_multi_axis.run_probe("z-", gcmd, speed_ratio=0.5)[
-            2
-        ]
-        # Redo X and Y with accurate center Z
-        center_x, center_y = self.calibrate_xy(
-            toolhead,
-            [center_x, center_y, center_z],
+            [position[0], position[1], center_z],
             gcmd,
             self.spread,
             probe_x=probe_x,
