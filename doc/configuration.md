@@ -178,6 +178,10 @@ When not specified they will be initialized with the default value as below.
 #on_tool_change_error_gcode = PAUSE
 #   G-code macro or command to execute if pickup or dropoff switch verification fails.
 #   Provides 'myself', 'toolchanger', 'ktc', and 'STATE_TYPE'.
+
+#on_set_active_tool_gcode =
+#   G-code macro or command to execute when KTC_SET_ACTIVE_TOOL is called manually.
+#   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
 ```
 
 ### ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Custom parameters

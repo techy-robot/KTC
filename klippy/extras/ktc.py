@@ -516,7 +516,36 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
     def cmd_KTC_SET_ACTIVE_TOOL(
         self, gcmd: "gcode.GCodeCommand"
     ):  # pylint: disable=invalid-name
-        self.active_tool = self.get_tool_from_gcmd(gcmd)
+        tool = self.get_tool_from_gcmd(gcmd)
+        self.active_tool = tool
+        self._run_on_set_active_tool_gcode(tool)
+
+    def _run_on_set_active_tool_gcode(self, tool: "ktc_tool.KtcTool"):
+        gcode_str = ""
+        if tool and tool not in self.INVALID_TOOLS:
+            gcode_str = getattr(tool, "_on_set_active_tool_gcode", "")
+        if not gcode_str:
+            gcode_str = getattr(self, "_on_set_active_tool_gcode", "")
+        if not gcode_str or not gcode_str.strip():
+            return
+        try:
+            gcode_macro = self.printer.lookup_object("gcode_macro")
+            config = getattr(tool, "config", self.config)
+            template = gcode_macro.load_template(config, "", gcode_str)
+            context = template.create_template_context()
+            if tool and tool not in self.INVALID_TOOLS:
+                context["myself"] = tool.get_status()
+            else:
+                context["myself"] = self.get_status()
+            if tool and getattr(tool, "toolchanger", None) is not None:
+                context["toolchanger"] = tool.toolchanger.get_status()
+            context["ktc"] = self.get_status()
+            context["STATE_TYPE"] = self.StateType
+            template.run_gcode_from_command(context)
+        except Exception as e:
+            raise self.printer.command_error(
+                f"Failed to run on_set_active_tool_gcode: {e}"
+            ) from e
 
     cmd_KTC_DESELECT_ALL_help = "Deselect all tools"
 
