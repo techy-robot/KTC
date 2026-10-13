@@ -198,18 +198,51 @@ class KtcSafety:
             raise self.printer.command_error(msg)
 
     def check_reboot_state(self):
-        """Called during _handle_ready. If a tool is physically sensed on reboot, enter ERROR state."""
+        """Called during _handle_ready. If a tool is physically sensed or tracked as attached on reboot, enter ERROR state."""
         if not self.enabled or not getattr(self.toolchanger, "prevent_toolchange_on_reboot_attached", True):
             return
 
         is_present = self.query_tool_present()
-        if is_present is True:
-            tool = self.toolchanger.selected_tool
-            if (tool in self.toolchanger.INVALID_TOOLS or tool is None) and self.toolchanger._ktc:
-                tool = self.toolchanger._ktc.active_tool
 
+        # If selected_tool is unknown, resolve from persistent storage
+        tool = self.toolchanger.selected_tool
+        if tool in self.toolchanger.INVALID_TOOLS or tool is None:
+            persisted_name = str.lower(
+                self.toolchanger.persistent_state.get(
+                    "selected_tool", self.toolchanger.TOOL_UNKNOWN.name
+                )
+            )
+            if persisted_name not in (
+                self.toolchanger.TOOL_NONE.name,
+                self.toolchanger.TOOL_UNKNOWN.name,
+            ) and persisted_name in self.toolchanger.tools:
+                tool = self.toolchanger.tools[persisted_name]
+                self.toolchanger.selected_tool = tool
+            elif persisted_name == self.toolchanger.TOOL_NONE.name:
+                self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
+
+        if (tool in self.toolchanger.INVALID_TOOLS or tool is None) and self.toolchanger._ktc:
+            tool = self.toolchanger._ktc.active_tool
+
+        # Determine if tool is attached:
+        # 1. Physical sensor confirms tool is present (is_present is True)
+        # 2. No physical sensor exists (is_present is None), fall back to persistent software state
+        is_attached = False
+        if is_present is True:
+            is_attached = True
+        elif is_present is None:
+            if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
+                is_attached = True
+
+        if is_attached:
+            tool_name = (
+                tool.name
+                if tool and tool not in self.toolchanger.INVALID_TOOLS
+                else "unknown"
+            )
+            detection_source = "physically detected" if is_present is True else "software state indicates tool"
             msg = (
-                f"KTC SAFETY WARNING: Tool physically detected on reboot on '{self.toolchanger.name}'! "
+                f"KTC SAFETY WARNING: Tool '{tool_name}' {detection_source} attached on reboot on '{self.toolchanger.name}'! "
                 "Toolchanger locked in ERROR state to prevent unexpected tool changes. "
                 "Run KTC_SAFETY_UNLOCK to proceed."
             )
@@ -228,21 +261,33 @@ class KtcSafety:
         """Clears ERROR state and synchronizes tool state based on sensor query or prior state."""
         is_present = self.query_tool_present()
 
-        if is_present is True:
-            # Physical sensor confirms tool is attached on carriage
-            # If selected_tool is unknown, try to restore from persistent storage
-            if self.toolchanger.selected_tool in self.toolchanger.INVALID_TOOLS:
-                persisted_name = str.lower(
-                    self.toolchanger.persistent_state.get(
-                        "selected_tool", self.toolchanger.TOOL_UNKNOWN.name
-                    )
+        # If selected_tool is unknown, try to restore from persistent storage
+        if self.toolchanger.selected_tool in self.toolchanger.INVALID_TOOLS:
+            persisted_name = str.lower(
+                self.toolchanger.persistent_state.get(
+                    "selected_tool", self.toolchanger.TOOL_UNKNOWN.name
                 )
-                if persisted_name in self.toolchanger.tools:
-                    self.toolchanger.selected_tool = self.toolchanger.tools[persisted_name]
+            )
+            if persisted_name in self.toolchanger.tools:
+                self.toolchanger.selected_tool = self.toolchanger.tools[persisted_name]
+            elif persisted_name == self.toolchanger.TOOL_NONE.name:
+                self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
 
+        # Determine if tool is attached:
+        # True: physical sensor says attached
+        # False: physical sensor says NOT attached
+        # None: no physical sensor; fall back to software state (selected_tool)
+        tool_attached = (is_present is True) or (
+            is_present is None
+            and self.toolchanger.selected_tool not in self.toolchanger.INVALID_TOOLS
+        )
+
+        if tool_attached:
             if self.toolchanger.selected_tool not in self.toolchanger.INVALID_TOOLS:
                 self.toolchanger.selected_tool.state = self.toolchanger.StateType.ENGAGED
                 self.toolchanger.state = self.toolchanger.StateType.ENGAGED
+                if self.toolchanger._ktc:
+                    self.toolchanger._ktc.active_tool = self.toolchanger.selected_tool
                 msg = (
                     f"KTC SAFETY: Unlocked '{self.toolchanger.name}'. "
                     f"Tool '{self.toolchanger.selected_tool.name}' is attached (ENGAGED). "
@@ -255,9 +300,11 @@ class KtcSafety:
                     "Tool attached but identity unknown. Use KTC_SET_ACTIVE_TOOL to specify tool if desired."
                 )
         else:
-            # Sensor confirms no tool attached, or no sensor is configured (assume in dock)
+            # Sensor confirms no tool attached, or no sensor is configured and software state was TOOL_NONE
             self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
             self.toolchanger.state = self.toolchanger.StateType.READY
+            if self.toolchanger._ktc and self.toolchanger._ktc.active_tool == self.toolchanger.selected_tool:
+                self.toolchanger._ktc.active_tool = self.toolchanger.TOOL_NONE
             msg = (
                 f"KTC SAFETY: Unlocked '{self.toolchanger.name}'. "
                 "Carriage empty (TOOL_NONE, READY). Ready for tool selection."

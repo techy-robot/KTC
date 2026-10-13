@@ -193,7 +193,7 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 tool_select_gcode_template.run_gcode_from_command(context)
                 # Check that the gcode has changed the state.
             except Exception as e:
-                raise Exception("Failed to run tool_select_gcode: " + str(e)) from e
+                raise self.printer.command_error("Failed to run tool_select_gcode: " + str(e)) from e
             if self.state == self.StateType.SELECTING:
                 raise self.config.error(
                     ("tool_select_gcode has not changed the state while running "
@@ -271,7 +271,7 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 context['STATE_TYPE'] = self.StateType
                 gcode_template.run_gcode_from_command(context)
             except Exception as e:
-                raise Exception("Failed to run tool_deselect_gcode: " + str(e)) from e
+                raise self.printer.command_error("Failed to run tool_deselect_gcode: " + str(e)) from e
             # Check that the gcode has changed the state.
             if self.state == self.StateType.DESELECTING:
                 raise self.config.error(
