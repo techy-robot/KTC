@@ -103,11 +103,23 @@ class KtcSafety:
                 return
             self._last_drop_eventtime = eventtime
 
+            tool = self.toolchanger.selected_tool
+            if (tool in self.toolchanger.INVALID_TOOLS or tool is None) and self.toolchanger._ktc:
+                tool = self.toolchanger._ktc.active_tool
+
             tool_name = (
-                self.toolchanger.selected_tool.name
-                if self.toolchanger.selected_tool not in self.toolchanger.INVALID_TOOLS
+                tool.name
+                if tool and tool not in self.toolchanger.INVALID_TOOLS
                 else "unknown"
             )
+
+            # Transition tool state to ERROR
+            if tool and tool not in self.toolchanger.INVALID_TOOLS:
+                tool.state = self.toolchanger.StateType.ERROR
+
+            # Transition toolchanger state to ERROR
+            self.toolchanger.state = self.toolchanger.StateType.ERROR
+
             msg = (
                 f"KTC SAFETY ALERT: Tool drop detected on toolchanger '{self.toolchanger.name}'! "
                 f"Active tool '{tool_name}' detached unexpectedly."
@@ -115,16 +127,11 @@ class KtcSafety:
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
 
-            # Transition state to ERROR
-            self.toolchanger.state = self.toolchanger.StateType.ERROR
-            if (
-                self.toolchanger.selected_tool
-                and self.toolchanger.selected_tool not in self.toolchanger.INVALID_TOOLS
-            ):
-                self.toolchanger.selected_tool.state = self.toolchanger.StateType.ERROR
-
-            # Execute drop callback
-            self._run_gcode_callback(getattr(self.toolchanger, "_on_tool_drop_gcode", "PAUSE"))
+            # Execute drop callback passing the tool as myself
+            self._run_gcode_callback(
+                getattr(self.toolchanger, "_on_tool_drop_gcode", "PAUSE"),
+                tool=tool,
+            )
 
     def query_tool_present(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> typing.Optional[bool]:
         """Unified sensor resolution:
@@ -164,7 +171,10 @@ class KtcSafety:
                 self.toolchanger.log.always(msg)
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
-            self._run_gcode_callback(getattr(self.toolchanger, "_on_tool_change_error_gcode", "PAUSE"))
+            self._run_gcode_callback(
+                getattr(self.toolchanger, "_on_tool_change_error_gcode", "PAUSE"),
+                tool=tool,
+            )
             raise self.printer.command_error(msg)
 
     def verify_tool_dropoff(self, tool: "ktc_tool.KtcTool"):
@@ -182,7 +192,10 @@ class KtcSafety:
                 self.toolchanger.log.always(msg)
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
-            self._run_gcode_callback(getattr(self.toolchanger, "_on_tool_change_error_gcode", "PAUSE"))
+            self._run_gcode_callback(
+                getattr(self.toolchanger, "_on_tool_change_error_gcode", "PAUSE"),
+                tool=tool,
+            )
             raise self.printer.command_error(msg)
 
     def check_reboot_state(self):
@@ -192,6 +205,10 @@ class KtcSafety:
 
         is_present = self.query_tool_present()
         if is_present is True:
+            tool = self.toolchanger.selected_tool
+            if (tool in self.toolchanger.INVALID_TOOLS or tool is None) and self.toolchanger._ktc:
+                tool = self.toolchanger._ktc.active_tool
+
             msg = (
                 f"KTC SAFETY WARNING: Tool physically detected on reboot on '{self.toolchanger.name}'! "
                 "Toolchanger locked in ERROR state to prevent unexpected tool changes. "
@@ -200,13 +217,13 @@ class KtcSafety:
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
             self.toolchanger.state = self.toolchanger.StateType.ERROR
-            if (
-                self.toolchanger.selected_tool
-                and self.toolchanger.selected_tool not in self.toolchanger.INVALID_TOOLS
-            ):
-                self.toolchanger.selected_tool.state = self.toolchanger.StateType.ERROR
+            if tool and tool not in self.toolchanger.INVALID_TOOLS:
+                tool.state = self.toolchanger.StateType.ERROR
 
-            self._run_gcode_callback(getattr(self.toolchanger, "_on_reboot_tool_attached_gcode", ""))
+            self._run_gcode_callback(
+                getattr(self.toolchanger, "_on_reboot_tool_attached_gcode", ""),
+                tool=tool,
+            )
 
     def unlock(self):
         """Clears ERROR state and synchronizes tool state based on sensor query or prior state."""
@@ -256,20 +273,24 @@ class KtcSafety:
         else:
             self.printer.lookup_object("gcode").respond_info(msg)
 
-    def _run_gcode_callback(self, gcode_str: str):
+    def _run_gcode_callback(self, gcode_str: str, tool: typing.Optional["ktc_tool.KtcTool"] = None):
         if not gcode_str or not gcode_str.strip():
             return
         try:
             gcode_macro: "klippy_gcode_macro.PrinterGCodeMacro" = self.printer.lookup_object("gcode_macro")
             template = gcode_macro.load_template(self.config, "", gcode_str)
             context = template.create_template_context()
-            context["myself"] = self.toolchanger.get_status()
+            if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
+                context["myself"] = tool.get_status()
+            else:
+                context["myself"] = self.toolchanger.get_status()
+            context["toolchanger"] = self.toolchanger.get_status()
             if self.toolchanger._ktc is not None:
                 context["ktc"] = self.toolchanger._ktc.get_status()
             context["STATE_TYPE"] = self.toolchanger.StateType
             template.run_gcode_from_command(context)
         except Exception as e:
+            msg = f"KTC SAFETY: Error running safety callback: {e}"
             if self.toolchanger.log:
-                self.toolchanger.log.always(
-                    f"KTC SAFETY: Error running safety callback: {e}"
-                )
+                self.toolchanger.log.always(msg)
+            self.printer.lookup_object("gcode").respond_info(msg)
