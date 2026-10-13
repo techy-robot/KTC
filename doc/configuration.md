@@ -141,6 +141,47 @@ When not specified they will be initialized with the default value as below.
 #     not being used. When selecting the tool again, it will enter active mode and heat
 #     back up.
 
+#tool_present_pin = None
+#   Optional MCU input pin connected to the physical tool presence switch.
+#   Can be configured on [ktc], [ktc_toolchanger], or [ktc_tool].
+#   If configured on [ktc_toolchanger], senses tool attached to the carriage.
+#   If configured on [ktc_tool], senses that specific toolhead.
+#   Supports pullup (^) and inversion (!), e.g. ^!PG12.
+#   If not configured, safety transparently falls back to software state.
+
+#dock_pin = None
+#   Optional MCU input pin connected to a switch on the tool dock.
+#   Can be configured on [ktc_tool].
+
+#prevent_toolchange_on_reboot_attached = True
+#   If True and a tool presence switch detects a tool is attached on startup/reboot,
+#   the toolchanger is placed in ERROR state to prevent unexpected blind tool changes.
+#   Run KTC_SAFETY_UNLOCK to clear the error.
+
+#verify_tool_pickup = True
+#   If True and a sensor is present, verifies that the tool presence switch is
+#   triggered after tool_select_gcode. If not, sets ERROR and runs on_tool_change_error_gcode.
+
+#verify_tool_dropoff = True
+#   If True and a sensor is present, verifies that the tool presence switch is
+#   released after tool_deselect_gcode. If not, sets ERROR and runs on_tool_change_error_gcode.
+
+#on_tool_drop_gcode = PAUSE
+#   G-code macro or command to execute if a tool presence switch opens unexpectedly
+#   while a tool is active/engaged. Default is PAUSE.
+#   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
+
+#on_reboot_tool_attached_gcode =
+#   G-code macro or command to execute when a tool is sensed attached on reboot.
+#   Provides 'myself', 'toolchanger', 'ktc', and 'STATE_TYPE'.
+
+#on_tool_change_error_gcode = PAUSE
+#   G-code macro or command to execute if pickup or dropoff switch verification fails.
+#   Provides 'myself', 'toolchanger', 'ktc', and 'STATE_TYPE'.
+
+#on_set_active_tool_gcode =
+#   G-code macro or command to execute when KTC_SET_ACTIVE_TOOL is called manually.
+#   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
 ```
 
 ### ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Custom parameters

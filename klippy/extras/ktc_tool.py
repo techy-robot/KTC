@@ -13,6 +13,7 @@ from .ktc_base import (     # pylint: disable=relative-beyond-top-level
     KtcBaseChangerClass,
 )
 from .ktc_heater import HeaterStateType, KtcHeaterSettings   # pylint: disable=relative-beyond-top-level
+from .ktc_safety import KtcSwitchSensor   # pylint: disable=relative-beyond-top-level
 
 # Only import these modules in Dev environment. Consult Dev_doc.md for more info.
 if typing.TYPE_CHECKING:
@@ -86,6 +87,24 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                         self.printer.load_object(
                         self.config, "ktc_heater " + heater_settings.name)
                     )
+
+        # Extended tool safety sensors (per-toolhead)
+        tool_present_pin = self.config.get("tool_present_pin", None)
+        if tool_present_pin:
+            tc_safety = getattr(self.toolchanger, "safety", None) if self.toolchanger else None
+            self.tool_present_sensor = KtcSwitchSensor(
+                self.printer,
+                self.config,
+                tool_present_pin,
+                callback=tc_safety._handle_sensor_change if tc_safety else None,
+            )
+        dock_pin = self.config.get("dock_pin", None)
+        if dock_pin:
+            self.dock_sensor = KtcSwitchSensor(
+                self.printer,
+                self.config,
+                dock_pin,
+            )
 
         self.state = self.StateType.CONFIGURED
 
@@ -187,6 +206,10 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                     ("tool_select_gcode changed the state to ERROR while running.")
                 )
 
+            # Extended Tool Safety: Verify tool pickup
+            if self.toolchanger and getattr(self.toolchanger, "safety", None):
+                self.toolchanger.safety.verify_tool_pickup(self)
+
             if final_selected and self.state == self.StateType.SELECTED:
                 # Restore fan if has a fan.
                 for fan in self.fans:
@@ -266,6 +289,10 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             self.log.track_tool_deselecting_end(
                 self
             )  # Log the time it takes for tool change.
+
+            # Extended Tool Safety: Verify tool dropoff
+            if self.toolchanger and getattr(self.toolchanger, "safety", None):
+                self.toolchanger.safety.verify_tool_dropoff(self)
         except Exception as e:
             self.log.always("KTC Tool %s failed to deselect: %s" % (self.name, str(e)))
             self.state = self.StateType.ERROR
@@ -364,6 +391,8 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             "heater_standby_temp": self.extruder.standby_temp,
             "heater_active_to_standby_delay": self.extruder.active_to_standby_delay,
             "standby_to_powerdown_delay": self.extruder.standby_to_powerdown_delay,
+            "tool_present": self.tool_present_sensor.is_triggered() if self.tool_present_sensor is not None else None,
+            "docked": self.dock_sensor.is_triggered() if self.dock_sensor is not None else None,
             "params_available": str(self.params.keys()),
             **self.params,
         }

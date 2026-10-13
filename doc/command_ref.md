@@ -43,12 +43,21 @@
   ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Advanced commands, rarely used
   | Command | Description |
   | ------- | ----------- |
-  | `KTC_SET_ACTIVE_TOOL TOOL=<name> \| T=<index>`|  Set the KTC active tool manually to the specified. For overwriding when loading a tool manually. |
+  | `KTC_SET_ACTIVE_TOOL TOOL=<name> \| T=<index>`|  Set the KTC active tool manually to the specified. For overriding when loading a tool manually. Runs `on_set_active_tool_gcode` callback if defined. |
   | `KTC_SET_STATE [TOOL=<name> \| T=<index> \| TOOLCHANGER=<value>] [STATE=<ERROR \| NOT_CONFIGURED \| CONFIGURING \| CONFIGURED \| UNINITIALIZED \| INITIALIZING \| INITIALIZED \| READY \| CHANGING \| ENGAGING \| SELECTING \| DISENGAGING \| DESELECTING \| ENGAGED \| SELECTED \| ACTIVE>]` | Sets the state of the specified tool, toolchanger or the KTC itself. Without state provided, it reports the currently active state for the specified tool, toolchanger or KTC itself if no attributes. To change state to KTC, only use the STATE attribute. For changing toolchanger state, use TOOLCHANGER attribute. |
   | `KTC_TOOLCHANGER_SET_SELECTED_TOOL TOOL=<name> \| T=<index> [TOOLCHANGER=<value>]` | Manually sets the selected tool of a specified or the default toolchanger. |
   | `KTC_TOOLCHANGER_INITIALIZE [TOOLCHANGER=<value>]` | Manually initialize the specified or default toolchanger. |
   | `KTC_HEATERS_PAUSE` | Turns off all heaters that are configured for tools and saves the changes. The heaters can be resumed later using the command KTC_HEATERS_RESUME. This command does not affect heated beds. |
   | `KTC_HEATERS_RESUME` | Resumes all heaters that were previously turned off by the `KTC_HEATERS_PAUSE` command. |
+  <br>
+
+  ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Extended Tool Safety Commands
+  | Command | Description |
+  | ------- | ----------- |
+  | `KTC_SAFETY_UNLOCK [TOOLCHANGER=<name>]` | Unlock safety lockout (clears `ERROR` state). Evaluates sensors or prior state: if a tool is sensed attached, sets state to `ENGAGED` with the attached tool so subsequent tool changes run normal deselect routines; if sensed empty (or no sensor), sets state to `READY` with `TOOL_NONE`. |
+  | `KTC_SAFETY_ENABLE [TOOLCHANGER=<name>]` | Enable active drop monitoring for the specified or all toolchangers. |
+  | `KTC_SAFETY_DISABLE [TOOLCHANGER=<name>]` | Disable active drop monitoring for the specified or all toolchangers. |
+  | `KTC_SAFETY_QUERY [TOOLCHANGER=<name>] [TOOL=<name> \| T=<index>]` | Report current safety monitoring status and switch trigger states (carriage, toolhead, and dock sensors). |
   <br>
 
   ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Status, Logging and Persisted state
