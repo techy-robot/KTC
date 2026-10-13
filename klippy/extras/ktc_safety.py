@@ -33,12 +33,11 @@ class KtcSwitchSensor:
     def _setup_sensor(self):
         ppins = self.printer.lookup_object("pins")
         # Allow multi-use pin if referenced elsewhere
-        clean_pin = self.pin_name.replace("^", "").replace("!", "")
+        clean_pin = self.pin_name.replace("^", "").replace("!", "").replace("~", "").strip()
         ppins.allow_multi_use_pin(clean_pin)
-        pin_params = ppins.lookup_pin(self.pin_name, can_invert=True, can_pullup=True)
 
         buttons = self.printer.load_object(self.config, "buttons")
-        buttons.register_buttons([pin_params], self._handle_button_event)
+        buttons.register_buttons([self.pin_name], self._handle_button_event)
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
