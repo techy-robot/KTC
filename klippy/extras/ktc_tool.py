@@ -89,7 +89,7 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                     )
 
         # Extended tool safety sensors (per-toolhead)
-        tool_present_pin = self.config.get("tool_present_pin", None)
+        tool_present_pin = getattr(self, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
         if tool_present_pin:
             tc_safety = getattr(self.toolchanger, "safety", None) if self.toolchanger else None
             self.tool_present_sensor = KtcSwitchSensor(
@@ -98,7 +98,7 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 tool_present_pin,
                 callback=tc_safety._handle_sensor_change if tc_safety else None,
             )
-        dock_pin = self.config.get("dock_pin", None)
+        dock_pin = getattr(self, "dock_pin", None) or self.config.get("dock_pin", None)
         if dock_pin:
             self.dock_sensor = KtcSwitchSensor(
                 self.printer,

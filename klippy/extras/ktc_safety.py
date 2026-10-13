@@ -18,7 +18,7 @@ if typing.TYPE_CHECKING:
 
 
 class KtcSwitchSensor:
-    """Encapsulates a physical microswitch / optical sensor pin using Klipper's pins and buttons."""
+    """Encapsulates a physical microswitch / optical sensor pin using Klipper's buttons."""
 
     def __init__(self, printer, config: "configfile.ConfigWrapper", pin_name: str, callback=None):
         self.printer = printer
@@ -37,12 +37,19 @@ class KtcSwitchSensor:
         ppins.allow_multi_use_pin(clean_pin)
 
         buttons = self.printer.load_object(self.config, "buttons")
-        buttons.register_buttons([self.pin_name], self._handle_button_event)
+        buttons.register_debounce_button(
+            self.pin_name,
+            self._handle_button_event,
+            self.config,
+        )
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
         if self.callback:
             self.callback(eventtime, self.state)
+
+    def query(self) -> bool:
+        return self.state
 
     def is_triggered(self) -> bool:
         return self.state
