@@ -37,11 +37,8 @@ class KtcSwitchSensor:
         ppins.allow_multi_use_pin(clean_pin)
 
         buttons = self.printer.load_object(self.config, "buttons")
-        buttons.register_debounce_button(
-            self.pin_name,
-            self._handle_button_event,
-            self.config,
-        )
+        # Pass [self.pin_name] (string), NOT [pin_params]
+        buttons.register_buttons([self.pin_name], self._handle_button_event)
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
