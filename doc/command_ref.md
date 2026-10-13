@@ -51,6 +51,15 @@
   | `KTC_HEATERS_RESUME` | Resumes all heaters that were previously turned off by the `KTC_HEATERS_PAUSE` command. |
   <br>
 
+  ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Extended Tool Safety Commands
+  | Command | Description |
+  | ------- | ----------- |
+  | `KTC_SAFETY_UNLOCK [TOOLCHANGER=<name>]` | Unlock safety lockout (clears `ERROR` state). Evaluates sensors or prior state: if a tool is sensed attached, sets state to `ENGAGED` with the attached tool so subsequent tool changes run normal deselect routines; if sensed empty (or no sensor), sets state to `READY` with `TOOL_NONE`. |
+  | `KTC_SAFETY_ENABLE [TOOLCHANGER=<name>]` | Enable active drop monitoring for the specified or all toolchangers. |
+  | `KTC_SAFETY_DISABLE [TOOLCHANGER=<name>]` | Disable active drop monitoring for the specified or all toolchangers. |
+  | `KTC_SAFETY_QUERY [TOOLCHANGER=<name>] [TOOL=<name> \| T=<index>]` | Report current safety monitoring status and switch trigger states (carriage, toolhead, and dock sensors). |
+  <br>
+
   ## ![#f98b00](/doc/f98b00.png) ![#fe3263](/doc/fe3263.png) ![#0fefa9](/doc/0fefa9.png) ![#085afe](/doc/085afe.png) Status, Logging and Persisted state
   | Command | Description |
   | ------- | ----------- |

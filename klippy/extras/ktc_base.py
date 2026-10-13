@@ -22,7 +22,7 @@ from .ktc_heater import (   # pylint: disable=relative-beyond-top-level
 if typing.TYPE_CHECKING:
     from ...klipper.klippy import configfile, gcode, klippy
     from ...klipper.klippy.extras import gcode_macro as klippy_gcode_macro
-    from . import ktc_log, ktc_toolchanger, ktc_tool, ktc, ktc_persisting
+    from . import ktc_log, ktc_toolchanger, ktc_tool, ktc, ktc_persisting, ktc_safety
 
 # Value of Unknown and None tools.
 TOOL_NUMBERLESS_N = -3
@@ -45,6 +45,14 @@ PARAMS_TO_INHERIT = {"_engage_gcode": "",
                          DEFAULT_HEATER_ACTIVE_TO_STANDBY_DELAY,
                      "_heater_standby_to_powerdown_delay_in_config":
                          DEFAULT_HEATER_STANDBY_TO_POWERDOWN_DELAY,
+                     "tool_present_pin": None,
+                     "dock_pin": None,
+                     "prevent_toolchange_on_reboot_attached": True,
+                     "verify_tool_pickup": True,
+                     "verify_tool_dropoff": True,
+                     "_on_tool_drop_gcode": "PAUSE",
+                     "_on_reboot_tool_attached_gcode": "",
+                     "_on_tool_change_error_gcode": "PAUSE",
                      }
 
 class KtcConfigurableEnum(Enum):
@@ -117,6 +125,19 @@ class KtcBaseClass:
         self._tool_deselect_gcode = config.get("tool_deselect_gcode", None) # type: ignore
 
         self._heaters_config: str = self.config.get("heater", None)    # type: ignore
+
+        # Extended tool safety options
+        self.tool_present_pin = config.get("tool_present_pin", None)
+        self.dock_pin = config.get("dock_pin", None)
+        self.prevent_toolchange_on_reboot_attached = config.getboolean(
+            "prevent_toolchange_on_reboot_attached", None)
+        self.verify_tool_pickup = config.getboolean(
+            "verify_tool_pickup", None)
+        self.verify_tool_dropoff = config.getboolean(
+            "verify_tool_dropoff", None)
+        self._on_tool_drop_gcode = config.get("on_tool_drop_gcode", None)
+        self._on_reboot_tool_attached_gcode = config.get("on_reboot_tool_attached_gcode", None)
+        self._on_tool_change_error_gcode = config.get("on_tool_change_error_gcode", None)
 
         # Minimum time is 0.1 seconds. 0 disables the timer thus never changes the temperature.
         self._heater_active_to_standby_delay_in_config = self.config.getfloat(
@@ -411,6 +432,7 @@ class KtcBaseChangerClass(KtcBaseClass):
         self.tools: dict[str, 'ktc_tool.KtcTool'] = {}
         self._engage_gcode_template: klippy_gcode_macro.GCodeMacro = None # type: ignore
         self._disengage_gcode_template: klippy_gcode_macro.GCodeMacro = None # type: ignore
+        self.safety: 'ktc_safety.KtcSafety' = None # type: ignore
 
 class KtcBaseToolClass(KtcBaseClass):
     '''Base class for tools. Contains common methods and properties.'''
@@ -424,6 +446,8 @@ class KtcBaseToolClass(KtcBaseClass):
         self._toolchanger: 'ktc_toolchanger.KtcToolchanger' = None   # type: ignore
         self.toolchanger: 'ktc_toolchanger.KtcToolchanger' = self._toolchanger # type: ignore
         self.extruder = KtcToolExtruder(self)
+        self.tool_present_sensor: typing.Optional['ktc_safety.KtcSwitchSensor'] = None
+        self.dock_sensor: typing.Optional['ktc_safety.KtcSwitchSensor'] = None
 
     @KtcBaseClass.state.setter
     def state(self, value):

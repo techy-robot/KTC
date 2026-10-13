@@ -44,6 +44,7 @@ This is a fork of [KTC V2](https://github.com/TypQxQ/KTC/) to fix general usabil
 
 ## Fork Bug Fixes & Features:
 
+- Added optional tool presence and dock sensors
 - Added optional probe axis's
 - Added probe stats to tools calibrate
 - (Bug) Fixed Init check for toolchanger

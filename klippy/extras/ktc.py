@@ -149,6 +149,10 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_TOOL_MAP_NR",
             "KTC_DEBUG_HEATERS",
             "KTC_DEBUG_TOOLS",
+            "KTC_SAFETY_UNLOCK",
+            "KTC_SAFETY_ENABLE",
+            "KTC_SAFETY_DISABLE",
+            "KTC_SAFETY_QUERY",
         ]
         for cmd in handlers:
             func = getattr(self, "cmd_" + cmd)
@@ -163,6 +167,11 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             self.default_toolchanger.__class__.InitModeType.ON_START,
         )
         self._register_tool_gcode_commands()
+
+        # Check extended tool safety on reboot across all toolchangers
+        for tc in self.all_toolchangers.values():
+            if getattr(tc, "safety", None):
+                tc.safety.check_reboot_state()
 
     def _config_default_toolchanger(self):
         """Set the default toolchanger and validate it."""
@@ -951,6 +960,11 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             raise ValueError("KTC is in error state")
         if tool.state == tool.StateType.ERROR:
             raise ValueError("Tool is in error state")
+        if tool.toolchanger.state == tool.toolchanger.StateType.ERROR:
+            raise self.printer.command_error(
+                f"Toolchanger {tool.toolchanger.name} is in ERROR state. "
+                "Run KTC_SAFETY_UNLOCK or inspect hardware before toolchanging."
+            )
         if not _printer_is_homed_for_toolchange(tool.requires_axis_homed):
             raise ValueError(
                 "Printer is not homed for toolchange"
@@ -1099,6 +1113,135 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                 + f"- Time spent deselecting: \
                     {self.log.seconds_to_human_string(time_deselecting)}\n"
             )
+
+    cmd_KTC_SAFETY_UNLOCK_help = (
+        "[TOOLCHANGER=<name>]\n"
+        + "Unlock safety lockout, evaluate sensors or prior state, and synchronize tool status."
+    )
+
+    def cmd_KTC_SAFETY_UNLOCK(self, gcmd: "gcode.GCodeCommand"):
+        try:
+            tc_name = gcmd.get("TOOLCHANGER", None)
+            if tc_name:
+                tc = self.all_toolchangers.get(tc_name, None)
+                if not tc:
+                    raise gcmd.error(f"Toolchanger {tc_name} not found")
+            else:
+                tc = self.default_toolchanger
+
+            if not tc or not getattr(tc, "safety", None):
+                raise gcmd.error("No valid toolchanger or safety module found.")
+
+            tc.safety.unlock()
+        except Exception as e:
+            raise self.printer.command_error(
+                f"Error unlocking safety with command {gcmd.get_commandline()}: {str(e)}"
+            ) from e
+
+    cmd_KTC_SAFETY_ENABLE_help = (
+        "[TOOLCHANGER=<name>]\n"
+        + "Enable extended tool safety monitoring."
+    )
+
+    def cmd_KTC_SAFETY_ENABLE(self, gcmd: "gcode.GCodeCommand"):
+        try:
+            tc_name = gcmd.get("TOOLCHANGER", None)
+            if tc_name:
+                tc = self.all_toolchangers.get(tc_name, None)
+                if not tc:
+                    raise gcmd.error(f"Toolchanger {tc_name} not found")
+                toolchangers = [tc]
+            else:
+                toolchangers = list(self.all_toolchangers.values())
+
+            for tc in toolchangers:
+                if getattr(tc, "safety", None):
+                    tc.safety.enabled = True
+                    gcmd.respond_info(f"KTC SAFETY: Monitoring enabled for toolchanger '{tc.name}'.")
+        except Exception as e:
+            raise self.printer.command_error(
+                f"Error enabling safety with command {gcmd.get_commandline()}: {str(e)}"
+            ) from e
+
+    cmd_KTC_SAFETY_DISABLE_help = (
+        "[TOOLCHANGER=<name>]\n"
+        + "Disable extended tool safety monitoring."
+    )
+
+    def cmd_KTC_SAFETY_DISABLE(self, gcmd: "gcode.GCodeCommand"):
+        try:
+            tc_name = gcmd.get("TOOLCHANGER", None)
+            if tc_name:
+                tc = self.all_toolchangers.get(tc_name, None)
+                if not tc:
+                    raise gcmd.error(f"Toolchanger {tc_name} not found")
+                toolchangers = [tc]
+            else:
+                toolchangers = list(self.all_toolchangers.values())
+
+            for tc in toolchangers:
+                if getattr(tc, "safety", None):
+                    tc.safety.enabled = False
+                    gcmd.respond_info(f"KTC SAFETY: Monitoring disabled for toolchanger '{tc.name}'.")
+        except Exception as e:
+            raise self.printer.command_error(
+                f"Error disabling safety with command {gcmd.get_commandline()}: {str(e)}"
+            ) from e
+
+    cmd_KTC_SAFETY_QUERY_help = (
+        "[TOOLCHANGER=<name>] [TOOL=<name> | T=<index>]\n"
+        + "Query extended tool safety status and switch trigger states."
+    )
+
+    def cmd_KTC_SAFETY_QUERY(self, gcmd: "gcode.GCodeCommand"):
+        try:
+            tc_name = gcmd.get("TOOLCHANGER", None)
+            if tc_name:
+                tc = self.all_toolchangers.get(tc_name, None)
+                if not tc:
+                    raise gcmd.error(f"Toolchanger {tc_name} not found")
+            else:
+                tc = self.default_toolchanger
+
+            tool = self.get_tool_from_gcmd(gcmd, allow_invalid_active_tool=True, explicit=True)
+            if tool is None and tc:
+                tool = tc.selected_tool if tc.selected_tool not in tc.INVALID_TOOLS else None
+
+            if not tc or not getattr(tc, "safety", None):
+                raise gcmd.error("No valid toolchanger or safety module found.")
+
+            safety = tc.safety
+            is_present = safety.query_tool_present(tool)
+            carriage_status = (
+                "TRIGGERED" if (safety.carriage_sensor and safety.carriage_sensor.is_triggered())
+                else "OPEN" if safety.carriage_sensor
+                else "NOT_CONFIGURED"
+            )
+            toolhead_status = (
+                "TRIGGERED" if (tool and getattr(tool, "tool_present_sensor", None) and tool.tool_present_sensor.is_triggered())
+                else "OPEN" if (tool and getattr(tool, "tool_present_sensor", None))
+                else "NOT_CONFIGURED"
+            )
+            dock_status = (
+                "TRIGGERED" if (tool and getattr(tool, "dock_sensor", None) and tool.dock_sensor.is_triggered())
+                else "OPEN" if (tool and getattr(tool, "dock_sensor", None))
+                else "NOT_CONFIGURED"
+            )
+
+            msg = (
+                f"// --- KTC SAFETY STATUS ({tc.name}) ---\n"
+                f"// Safety Enabled: {safety.enabled}\n"
+                f"// Toolchanger State: {tc.state}\n"
+                f"// Tool Present: {is_present}\n"
+                f"// Carriage Sensor: {carriage_status}\n"
+                f"// Toolhead Sensor ({tool.name if tool else 'None'}): {toolhead_status}\n"
+                f"// Dock Sensor ({tool.name if tool else 'None'}): {dock_status}"
+            )
+            gcmd.respond_info(msg)
+        except Exception as e:
+            raise self.printer.command_error(
+                f"Error querying safety with command {gcmd.get_commandline()}: {str(e)}"
+            ) from e
 
 def load_config(config):
     # prof = cProfile.Profile()

@@ -11,6 +11,7 @@ import typing
 # import cProfile, pstats
 from enum import unique
 from .ktc_base import KtcConstantsClass, KtcBaseChangerClass, KtcConfigurableEnum # pylint: disable=relative-beyond-top-level
+from .ktc_safety import KtcSafety # pylint: disable=relative-beyond-top-level
 
 # Only import these modules in Dev environment. Consult Dev_doc.md for more info.
 if typing.TYPE_CHECKING:
@@ -28,6 +29,8 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
     def __init__(self, config: 'configfile.ConfigWrapper'):
         # Most of the function is inherited from the base class.
         super().__init__(config)
+
+        self.safety = KtcSafety(self, config)
 
         # When is the toolchanger initialized in relation to printer start and homing.
         self.init_mode = self.InitModeType.get_value_from_configuration(
@@ -66,6 +69,7 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
         super().configure_inherited_params()
         self.gcode_macro = typing.cast('klippy_gcode_macro.PrinterGCodeMacro', # type: ignore # pylint: disable=attribute-defined-outside-init
                                   self.printer.lookup_object("gcode_macro"))    # type: ignore
+        self.safety.configure_inherited_params()
         self.state = self.StateType.CONFIGURED  # pylint: disable=attribute-defined-outside-init # pylint bug
 
     def initialize(self):
@@ -267,6 +271,8 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
             "selected_tool_n": selected_tool_number,
             "state": self.state,
             "init_mode": self.init_mode,
+            "safety_enabled": self.safety.enabled if getattr(self, "safety", None) is not None else False,
+            "tool_present": self.safety.query_tool_present() if getattr(self, "safety", None) is not None else None,
             "tools": list(self.tools) if getattr(self, "tools", None) is not None else [],
             "params_available": str(self.params.keys()),
             **self.params,
