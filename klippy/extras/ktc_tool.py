@@ -96,7 +96,7 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 self.printer,
                 self.config,
                 tool_present_pin,
-                callback=tc_safety._handle_sensor_change if tc_safety else None,
+                callback=(lambda et, s, t=self: tc_safety._handle_sensor_change(et, s, tool=t)) if tc_safety else None,
             )
         dock_pin = getattr(self, "dock_pin", None) or self.config.get("dock_pin", None)
         if dock_pin:

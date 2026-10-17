@@ -1246,26 +1246,42 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                 else "OPEN" if safety.carriage_sensor
                 else "NOT_CONFIGURED"
             )
-            toolhead_status = (
-                "TRIGGERED" if (tool and getattr(tool, "tool_present_sensor", None) and tool.tool_present_sensor.is_triggered())
-                else "OPEN" if (tool and getattr(tool, "tool_present_sensor", None))
-                else "NOT_CONFIGURED"
-            )
-            dock_status = (
-                "TRIGGERED" if (tool and getattr(tool, "dock_sensor", None) and tool.dock_sensor.is_triggered())
-                else "OPEN" if (tool and getattr(tool, "dock_sensor", None))
-                else "NOT_CONFIGURED"
-            )
 
-            msg = (
-                f"// --- KTC SAFETY STATUS ({tc.name}) ---\n"
-                f"// Safety Enabled: {safety.enabled}\n"
-                f"// Toolchanger State: {tc.state}\n"
-                f"// Tool Present: {is_present}\n"
-                f"// Carriage Sensor: {carriage_status}\n"
-                f"// Toolhead Sensor ({tool.name if tool else 'None'}): {toolhead_status}\n"
-                f"// Dock Sensor ({tool.name if tool else 'None'}): {dock_status}"
-            )
+            tool_reports = []
+            if tool:
+                th_status = (
+                    "TRIGGERED" if (getattr(tool, "tool_present_sensor", None) and tool.tool_present_sensor.is_triggered())
+                    else "OPEN" if getattr(tool, "tool_present_sensor", None)
+                    else "NOT_CONFIGURED"
+                )
+                dk_status = (
+                    "TRIGGERED" if (getattr(tool, "dock_sensor", None) and tool.dock_sensor.is_triggered())
+                    else "OPEN" if getattr(tool, "dock_sensor", None)
+                    else "NOT_CONFIGURED"
+                )
+                tool_reports.append(f"// Toolhead Sensor ({tool.name}): {th_status}")
+                tool_reports.append(f"// Dock Sensor ({tool.name}): {dk_status}")
+            else:
+                for t in tc.tools.values():
+                    th_sensor = getattr(t, "tool_present_sensor", None)
+                    dk_sensor = getattr(t, "dock_sensor", None)
+                    if th_sensor or dk_sensor:
+                        th_status = "TRIGGERED" if (th_sensor and th_sensor.is_triggered()) else "OPEN" if th_sensor else "NOT_CONFIGURED"
+                        dk_status = "TRIGGERED" if (dk_sensor and dk_sensor.is_triggered()) else "OPEN" if dk_sensor else "NOT_CONFIGURED"
+                        tool_reports.append(f"// Toolhead Sensor ({t.name}): {th_status}")
+                        tool_reports.append(f"// Dock Sensor ({t.name}): {dk_status}")
+                if not tool_reports:
+                    tool_reports.append("// Toolhead Sensor: NOT_CONFIGURED")
+                    tool_reports.append("// Dock Sensor: NOT_CONFIGURED")
+
+            msg_lines = [
+                f"// --- KTC SAFETY STATUS ({tc.name}) ---",
+                f"// Safety Enabled: {safety.enabled}",
+                f"// Toolchanger State: {tc.state}",
+                f"// Tool Present: {is_present}",
+                f"// Carriage Sensor: {carriage_status}",
+            ] + tool_reports
+            msg = "\n".join(msg_lines)
             gcmd.respond_info(msg)
         except Exception as e:
             raise self.printer.command_error(
