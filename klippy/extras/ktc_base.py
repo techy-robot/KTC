@@ -52,6 +52,8 @@ PARAMS_TO_INHERIT = {"_engage_gcode": "",
                      "_on_reboot_tool_attached_gcode": "",
                      "_on_tool_change_error_gcode": "PAUSE",
                      "_on_set_active_tool_gcode": "",
+                     "_on_tool_mount_gcode": "",
+                     "_on_tool_dismount_gcode": "",
                      }
 
 class KtcConfigurableEnum(Enum):
@@ -150,6 +152,8 @@ class KtcBaseClass:
             "on_set_active_tool_gcode",
             config.get("set_active_tool_gcode", None),
         )
+        self._on_tool_mount_gcode = config.get("on_tool_mount_gcode", None)
+        self._on_tool_dismount_gcode = config.get("on_tool_dismount_gcode", None)
 
         # Minimum time is 0.1 seconds. 0 disables the timer thus never changes the temperature.
         self._heater_active_to_standby_delay_in_config = self.config.getfloat(

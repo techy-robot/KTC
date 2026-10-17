@@ -57,6 +57,8 @@ class KtcSafety:
         self.enabled: bool = True
         self.carriage_sensor: typing.Optional[KtcSwitchSensor] = None
         self._last_drop_eventtime: float = 0.0
+        self._last_mount_eventtime: float = 0.0
+        self._last_dismount_eventtime: float = 0.0
 
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
@@ -110,6 +112,36 @@ class KtcSafety:
                 return gcode
         return "PAUSE"
 
+    def _get_mount_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
+        """Resolves mount gcode, prioritizing tool, then toolchanger, then top ktc object."""
+        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
+            gcode = getattr(tool, "_on_tool_mount_gcode", None)
+            if gcode:
+                return gcode
+        gcode = getattr(self.toolchanger, "_on_tool_mount_gcode", None)
+        if gcode:
+            return gcode
+        if self.toolchanger._ktc is not None:
+            gcode = getattr(self.toolchanger._ktc, "_on_tool_mount_gcode", None)
+            if gcode:
+                return gcode
+        return ""
+
+    def _get_dismount_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
+        """Resolves dismount gcode, prioritizing tool, then toolchanger, then top ktc object."""
+        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
+            gcode = getattr(tool, "_on_tool_dismount_gcode", None)
+            if gcode:
+                return gcode
+        gcode = getattr(self.toolchanger, "_on_tool_dismount_gcode", None)
+        if gcode:
+            return gcode
+        if self.toolchanger._ktc is not None:
+            gcode = getattr(self.toolchanger._ktc, "_on_tool_dismount_gcode", None)
+            if gcode:
+                return gcode
+        return ""
+
     def _handle_sensor_change(
         self,
         eventtime: float,
@@ -121,7 +153,7 @@ class KtcSafety:
             return
 
         tc_state = self.toolchanger.state
-        # Suppress drop detection during intentional tool changes or unconfigured states
+        # Suppress automatic reactions during intentional tool transitions or unconfigured states
         if tc_state in (
             self.toolchanger.StateType.NOT_CONFIGURED,
             self.toolchanger.StateType.CONFIGURING,
@@ -133,53 +165,150 @@ class KtcSafety:
             self.toolchanger.StateType.DISENGAGING,
             self.toolchanger.StateType.SELECTING,
             self.toolchanger.StateType.DESELECTING,
-            self.toolchanger.StateType.READY,
-            self.toolchanger.StateType.ERROR,
         ):
             return
 
-        # If carriage is in ENGAGED or ACTIVE, the tool should be locked.
-        # If switch transitioned to untriggered (False), a tool drop occurred!
+        active_tool = self.toolchanger.selected_tool
+        if (active_tool in self.toolchanger.INVALID_TOOLS or active_tool is None) and self.toolchanger._ktc:
+            active_tool = self.toolchanger._ktc.active_tool
+
+        # --- SENSOR STATE: UNTRIGGERED (False) -> Tool Detached / Dismounted / Dropped ---
         if not state:
-            active_tool = self.toolchanger.selected_tool
-            if (active_tool in self.toolchanger.INVALID_TOOLS or active_tool is None) and self.toolchanger._ktc:
-                active_tool = self.toolchanger._ktc.active_tool
+            if tc_state in (
+                self.toolchanger.StateType.ENGAGED,
+                self.toolchanger.StateType.ACTIVE,
+            ):
+                # If event came from a specific tool, only process if it is the currently attached tool
+                if tool is not None and active_tool is not None and tool != active_tool:
+                    return
 
-            # If event came from a specific tool, only process if it is the currently attached tool
-            if tool is not None and active_tool is not None and tool != active_tool:
+                # Debounce drop events by at least 1 second
+                if eventtime - self._last_drop_eventtime < 1.0:
+                    return
+                self._last_drop_eventtime = eventtime
+
+                tool_obj = active_tool if active_tool and active_tool not in self.toolchanger.INVALID_TOOLS else tool
+                tool_name = (
+                    tool_obj.name
+                    if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS
+                    else "unknown"
+                )
+
+                if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
+                    tool_obj.state = self.toolchanger.StateType.ERROR
+
+                self.toolchanger.state = self.toolchanger.StateType.ERROR
+
+                msg = (
+                    f"KTC SAFETY ALERT: Tool drop detected on toolchanger '{self.toolchanger.name}'! "
+                    f"Active tool '{tool_name}' detached unexpectedly."
+                )
+                if self.toolchanger.log:
+                    self.toolchanger.log.always(msg)
+                else:
+                    self.printer.lookup_object("gcode").respond_info(msg)
+
+                self._run_gcode_callback(
+                    self._get_drop_gcode(tool=tool_obj),
+                    tool=tool_obj,
+                )
+
+            elif tc_state == self.toolchanger.StateType.READY:
+                # Manual dismount from idle/ready carriage
+                if eventtime - self._last_dismount_eventtime < 1.0:
+                    return
+                self._last_dismount_eventtime = eventtime
+
+                tool_obj = active_tool if active_tool and active_tool not in self.toolchanger.INVALID_TOOLS else tool
+                tool_name = tool_obj.name if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS else "unknown"
+
+                self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
+                if self.toolchanger._ktc:
+                    self.toolchanger._ktc.active_tool = self.toolchanger.TOOL_NONE
+
+                msg = f"KTC SAFETY: Tool '{tool_name}' manually dismounted from '{self.toolchanger.name}'."
+                if self.toolchanger.log:
+                    self.toolchanger.log.always(msg)
+                else:
+                    self.printer.lookup_object("gcode").respond_info(msg)
+
+                self._run_gcode_callback(
+                    self._get_dismount_gcode(tool=tool_obj),
+                    tool=tool_obj,
+                )
+
+            elif tc_state == self.toolchanger.StateType.ERROR:
+                # Tool dismounted / removed while in ERROR state
+                if eventtime - self._last_dismount_eventtime < 1.0:
+                    return
+                self._last_dismount_eventtime = eventtime
+
+                tool_obj = active_tool if active_tool and active_tool not in self.toolchanger.INVALID_TOOLS else tool
+                self._run_gcode_callback(
+                    self._get_dismount_gcode(tool=tool_obj),
+                    tool=tool_obj,
+                )
+
+        # --- SENSOR STATE: TRIGGERED (True) -> Tool Attached / Mounted / Reconnected ---
+        else:
+            if eventtime - self._last_mount_eventtime < 1.0:
                 return
+            self._last_mount_eventtime = eventtime
 
-            # Debounce drop events by at least 1 second
-            if eventtime - self._last_drop_eventtime < 1.0:
-                return
-            self._last_drop_eventtime = eventtime
+            tool_obj = tool
+            if (tool_obj is None or tool_obj in self.toolchanger.INVALID_TOOLS):
+                if active_tool and active_tool not in self.toolchanger.INVALID_TOOLS:
+                    tool_obj = active_tool
+                else:
+                    tool_obj = self.get_physically_attached_tool()
 
-            tool_obj = active_tool if active_tool and active_tool not in self.toolchanger.INVALID_TOOLS else tool
             tool_name = (
                 tool_obj.name
                 if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS
                 else "unknown"
             )
 
-            # Transition tool state to ERROR
-            if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
-                tool_obj.state = self.toolchanger.StateType.ERROR
+            if tc_state == self.toolchanger.StateType.ERROR:
+                # Tool reconnected after error / tool drop
+                if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
+                    self.toolchanger.selected_tool = tool_obj
+                    if self.toolchanger._ktc:
+                        self.toolchanger._ktc.active_tool = tool_obj
+                    tool_obj.state = self.toolchanger.StateType.ERROR
 
-            # Transition toolchanger state to ERROR
-            self.toolchanger.state = self.toolchanger.StateType.ERROR
+                msg = (
+                    f"KTC SAFETY: Tool '{tool_name}' sensor indicates tool re-connected on '{self.toolchanger.name}'. "
+                    "Safety lock remains active: run KTC_SAFETY_UNLOCK to resume."
+                )
+                if self.toolchanger.log:
+                    self.toolchanger.log.always(msg)
+                else:
+                    self.printer.lookup_object("gcode").respond_info(msg)
 
-            msg = (
-                f"KTC SAFETY ALERT: Tool drop detected on toolchanger '{self.toolchanger.name}'! "
-                f"Active tool '{tool_name}' detached unexpectedly."
-            )
-            if self.toolchanger.log:
-                self.toolchanger.log.always(msg)
+                self._run_gcode_callback(
+                    self._get_mount_gcode(tool=tool_obj),
+                    tool=tool_obj,
+                )
 
-            # Execute drop callback passing the tool as myself
-            self._run_gcode_callback(
-                self._get_drop_gcode(tool=tool_obj),
-                tool=tool_obj,
-            )
+            elif tc_state == self.toolchanger.StateType.READY:
+                # Manual mount onto idle carriage
+                if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
+                    self.toolchanger.selected_tool = tool_obj
+                    if self.toolchanger._ktc:
+                        self.toolchanger._ktc.active_tool = tool_obj
+                    tool_obj.state = self.toolchanger.StateType.ENGAGED
+                    self.toolchanger.state = self.toolchanger.StateType.ENGAGED
+
+                msg = f"KTC SAFETY: Tool '{tool_name}' manually mounted on '{self.toolchanger.name}'."
+                if self.toolchanger.log:
+                    self.toolchanger.log.always(msg)
+                else:
+                    self.printer.lookup_object("gcode").respond_info(msg)
+
+                self._run_gcode_callback(
+                    self._get_mount_gcode(tool=tool_obj),
+                    tool=tool_obj,
+                )
 
     def get_physically_attached_tool(self) -> typing.Optional["ktc_tool.KtcTool"]:
         """Scans all tools on this toolchanger to find which tool's present sensor is triggered."""
@@ -301,6 +430,10 @@ class KtcSafety:
         if not self.enabled or not getattr(self.toolchanger, "prevent_toolchange_on_reboot_attached", True):
             return
 
+        # Give reactor a brief moment to process any pending async button state events from MCU
+        reactor = self.printer.get_reactor()
+        reactor.pause(reactor.monotonic() + 0.1)
+
         # 1. Resolve selected_tool FIRST from toolchanger, ktc, or persistent storage
         tool = self.toolchanger.selected_tool
         if tool in self.toolchanger.INVALID_TOOLS or tool is None:
@@ -324,7 +457,7 @@ class KtcSafety:
         # 2. Query sensor AFTER tool identity is known
         is_present = self.query_tool_present(tool)
 
-        # 3. If tool was unknown but a physical sensor is triggered, find which tool it is
+        # 3. If tool was unknown/none but a physical sensor is triggered, find which tool it is
         if is_present is True and (tool in self.toolchanger.INVALID_TOOLS or tool is None):
             detected_tool = self.get_physically_attached_tool()
             if detected_tool:
@@ -355,9 +488,14 @@ class KtcSafety:
             )
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
+            else:
+                self.printer.lookup_object("gcode").respond_info(msg)
+
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             if tool and tool not in self.toolchanger.INVALID_TOOLS:
                 tool.state = tool.StateType.ERROR
+            if self.toolchanger._ktc and tool and tool not in self.toolchanger.INVALID_TOOLS:
+                self.toolchanger._ktc.active_tool = tool
 
             reboot_gcode = (
                 getattr(tool, "_on_reboot_tool_attached_gcode", None)
@@ -369,9 +507,33 @@ class KtcSafety:
                 reboot_gcode,
                 tool=tool,
             )
+        elif is_present is False and tool not in self.toolchanger.INVALID_TOOLS and tool is not None:
+            # Active tool was tracked in persistent state, but physically NOT attached on reboot!
+            msg = (
+                f"KTC SAFETY WARNING: Software state indicates Tool '{tool.name}' was active, "
+                f"but physical sensor indicates tool is NOT attached on '{self.toolchanger.name}'! "
+                "Toolchanger locked in ERROR state. Re-attach tool and run KTC_SAFETY_UNLOCK to proceed."
+            )
+            if self.toolchanger.log:
+                self.toolchanger.log.always(msg)
+            else:
+                self.printer.lookup_object("gcode").respond_info(msg)
+
+            self.toolchanger.state = self.toolchanger.StateType.ERROR
+            tool.state = tool.StateType.ERROR
+            if self.toolchanger._ktc:
+                self.toolchanger._ktc.active_tool = tool
+            self._run_gcode_callback(
+                self._get_error_gcode(tool=tool),
+                tool=tool,
+            )
 
     def unlock(self):
         """Clears ERROR state and synchronizes tool state based on sensor query or prior state."""
+        # Give reactor a brief moment to process any pending async button state events
+        reactor = self.printer.get_reactor()
+        reactor.pause(reactor.monotonic() + 0.05)
+
         # 1. If selected_tool is unknown, try to restore from persistent storage FIRST
         if self.toolchanger.selected_tool in self.toolchanger.INVALID_TOOLS:
             persisted_name = str.lower(
@@ -423,7 +585,7 @@ class KtcSafety:
             # Sensor confirms no tool attached, or no sensor is configured and software state was TOOL_NONE
             self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
             self.toolchanger.state = self.toolchanger.StateType.READY
-            if self.toolchanger._ktc and self.toolchanger._ktc.active_tool == self.toolchanger.selected_tool:
+            if self.toolchanger._ktc:
                 self.toolchanger._ktc.active_tool = self.toolchanger.TOOL_NONE
             msg = (
                 f"KTC SAFETY: Unlocked '{self.toolchanger.name}'. "

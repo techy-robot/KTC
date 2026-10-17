@@ -142,16 +142,14 @@ When not specified they will be initialized with the default value as below.
 #     back up.
 
 #tool_present_pin = None
-#   Optional MCU input pin or sensor object name connected to the physical tool presence switch.
+#   Optional MCU input pin connected to the physical tool presence switch.
 #   Can also be named tool_present_sensor.
 #   Can be configured on [ktc_toolchanger] (carriage sensor) or [ktc_tool] (toolhead sensor).
-#   Supports:
-#     - Hardware MCU pin with optional pullup (^) and inversion (!), e.g. ^!PG12
-#     - Existing [filament_switch_sensor] or [gcode_button] name, e.g. tool0_switch
+#   Supports hardware MCU pins with optional pullup (^) and inversion (!), e.g. ^!PG12.
 #   If not configured, safety transparently falls back to software state.
 
 #dock_pin = None
-#   Optional MCU input pin or sensor object name connected to a switch on the tool dock.
+#   Optional MCU input pin connected to a switch on the tool dock.
 #   Can also be named dock_sensor. Configured on [ktc_tool].
 
 #prevent_toolchange_on_reboot_attached = True
@@ -170,6 +168,15 @@ When not specified they will be initialized with the default value as below.
 #on_tool_drop_gcode = PAUSE
 #   G-code macro or command to execute if a tool presence switch opens unexpectedly
 #   while a tool is active/engaged. Default is PAUSE.
+#   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
+
+#on_tool_mount_gcode =
+#   G-code macro or command to execute when a tool is physically mounted or reconnected.
+#   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
+
+#on_tool_dismount_gcode =
+#   G-code macro or command to execute when a tool is manually dismounted while idle (READY) or in ERROR.
+#   (Note: during active/engaged printing, an unexpected detachment triggers on_tool_drop_gcode instead).
 #   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
 
 #on_reboot_tool_attached_gcode =

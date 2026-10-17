@@ -111,6 +111,9 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
         else:
             self.selected_tool = self.tools.get(selected_tool_name, self.TOOL_UNKNOWN)
 
+        if self._ktc and self.selected_tool not in self.INVALID_TOOLS:
+            self._ktc.active_tool = self.selected_tool
+
         if (self.selected_tool == self.TOOL_UNKNOWN and
             selected_tool_name != self.TOOL_UNKNOWN.name
             ):
@@ -140,8 +143,9 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
         else:
             self.state = self.StateType.READY
 
-        # Set the tool as engaged. Fir tools it is equivalent to selected.
-        self.selected_tool.state = self.StateType.ENGAGED
+        # Set the tool as engaged if a tool was restored.
+        if self.selected_tool not in self.INVALID_TOOLS:
+            self.selected_tool.state = self.StateType.ENGAGED
 
     def engage(self, disregard_engaged=False):
         '''Engage the lock on the tool so it can be removed.'''
@@ -254,13 +258,8 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
         if self._ktc.propagate_state:
             self._ktc.state = value
 
-        if value == self.StateType.ENGAGING:
-            self.selected_tool = self.TOOL_UNKNOWN
-        elif value == self.StateType.READY:
-            self.selected_tool = self.TOOL_NONE
-        elif value == self.StateType.ERROR:
-            self.log.always("KTC is now in error state.")
-            self.selected_tool = self.TOOL_UNKNOWN
+        if value == self.StateType.ERROR:
+            self.log.always("KTC Toolchanger %s is now in error state." % self.name)
 
     def get_status(self, eventtime=None):   # pylint: disable=unused-argument
         selected_tool_name = self.selected_tool.name if getattr(self, "selected_tool", None) is not None else ""
