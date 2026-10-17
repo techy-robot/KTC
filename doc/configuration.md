@@ -142,16 +142,17 @@ When not specified they will be initialized with the default value as below.
 #     back up.
 
 #tool_present_pin = None
-#   Optional MCU input pin connected to the physical tool presence switch.
-#   Can be configured on [ktc], [ktc_toolchanger], or [ktc_tool].
-#   If configured on [ktc_toolchanger], senses tool attached to the carriage.
-#   If configured on [ktc_tool], senses that specific toolhead.
-#   Supports pullup (^) and inversion (!), e.g. ^!PG12.
+#   Optional MCU input pin or sensor object name connected to the physical tool presence switch.
+#   Can also be named tool_present_sensor.
+#   Can be configured on [ktc_toolchanger] (carriage sensor) or [ktc_tool] (toolhead sensor).
+#   Supports:
+#     - Hardware MCU pin with optional pullup (^) and inversion (!), e.g. ^!PG12
+#     - Existing [filament_switch_sensor] or [gcode_button] name, e.g. tool0_switch
 #   If not configured, safety transparently falls back to software state.
 
 #dock_pin = None
-#   Optional MCU input pin connected to a switch on the tool dock.
-#   Can be configured on [ktc_tool].
+#   Optional MCU input pin or sensor object name connected to a switch on the tool dock.
+#   Can also be named dock_sensor. Configured on [ktc_tool].
 
 #prevent_toolchange_on_reboot_attached = True
 #   If True and a tool presence switch detects a tool is attached on startup/reboot,
@@ -177,6 +178,8 @@ When not specified they will be initialized with the default value as below.
 
 #on_tool_change_error_gcode = PAUSE
 #   G-code macro or command to execute if pickup or dropoff switch verification fails.
+#   Can also be named failure_gcode or on_failure_gcode. Default is PAUSE.
+#   Can be set on [ktc], [ktc_toolchanger], or per-tool on [ktc_tool].
 #   Provides 'myself', 'toolchanger', 'ktc', and 'STATE_TYPE'.
 
 #on_set_active_tool_gcode =

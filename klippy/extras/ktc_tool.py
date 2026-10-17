@@ -47,6 +47,28 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 self.printer.load_object(config, "ktc_toolchanger " + toolchanger_name),
             )
 
+        # Extended tool safety sensors (per-toolhead)
+        # Must register with buttons during __init__ before MCU connects and builds config
+        if self.tool_present_pin:
+            self.tool_present_sensor = KtcSwitchSensor(
+                self.printer,
+                config,
+                self.tool_present_pin,
+                callback=self._handle_tool_present_change,
+            )
+        if self.dock_pin:
+            self.dock_sensor = KtcSwitchSensor(
+                self.printer,
+                config,
+                self.dock_pin,
+            )
+
+    def _handle_tool_present_change(self, eventtime, state):
+        tc = getattr(self, "toolchanger", None)
+        tc_safety = getattr(tc, "safety", None) if tc else None
+        if tc_safety:
+            tc_safety._handle_sensor_change(eventtime, state, tool=self)
+
     @property
     def toolchanger(self) -> "ktc_toolchanger.KtcToolchanger":
         return self._toolchanger
@@ -88,22 +110,19 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                         self.config, "ktc_heater " + heater_settings.name)
                     )
 
-        # Extended tool safety sensors (per-toolhead)
-        tool_present_pin = getattr(self, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
-        if tool_present_pin:
-            tc_safety = getattr(self.toolchanger, "safety", None) if self.toolchanger else None
+        # Extended tool safety sensors fallback
+        if self.tool_present_pin and self.tool_present_sensor is None:
             self.tool_present_sensor = KtcSwitchSensor(
                 self.printer,
                 self.config,
-                tool_present_pin,
-                callback=(lambda et, s, t=self: tc_safety._handle_sensor_change(et, s, tool=t)) if tc_safety else None,
+                self.tool_present_pin,
+                callback=self._handle_tool_present_change,
             )
-        dock_pin = getattr(self, "dock_pin", None) or self.config.get("dock_pin", None)
-        if dock_pin:
+        if self.dock_pin and self.dock_sensor is None:
             self.dock_sensor = KtcSwitchSensor(
                 self.printer,
                 self.config,
-                dock_pin,
+                self.dock_pin,
             )
 
         self.state = self.StateType.CONFIGURED

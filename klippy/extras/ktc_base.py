@@ -45,8 +45,6 @@ PARAMS_TO_INHERIT = {"_engage_gcode": "",
                          DEFAULT_HEATER_ACTIVE_TO_STANDBY_DELAY,
                      "_heater_standby_to_powerdown_delay_in_config":
                          DEFAULT_HEATER_STANDBY_TO_POWERDOWN_DELAY,
-                     "tool_present_pin": None,
-                     "dock_pin": None,
                      "prevent_toolchange_on_reboot_attached": True,
                      "verify_tool_pickup": True,
                      "verify_tool_dropoff": True,
@@ -128,8 +126,14 @@ class KtcBaseClass:
         self._heaters_config: str = self.config.get("heater", None)    # type: ignore
 
         # Extended tool safety options
-        self.tool_present_pin = config.get("tool_present_pin", None)
-        self.dock_pin = config.get("dock_pin", None)
+        self.tool_present_pin = config.get(
+            "tool_present_pin",
+            config.get("tool_present_sensor", None)
+        )
+        self.dock_pin = config.get(
+            "dock_pin",
+            config.get("dock_sensor", None)
+        )
         self.prevent_toolchange_on_reboot_attached = config.getboolean(
             "prevent_toolchange_on_reboot_attached", None)
         self.verify_tool_pickup = config.getboolean(
@@ -138,7 +142,10 @@ class KtcBaseClass:
             "verify_tool_dropoff", None)
         self._on_tool_drop_gcode = config.get("on_tool_drop_gcode", None)
         self._on_reboot_tool_attached_gcode = config.get("on_reboot_tool_attached_gcode", None)
-        self._on_tool_change_error_gcode = config.get("on_tool_change_error_gcode", None)
+        self._on_tool_change_error_gcode = config.get(
+            "on_tool_change_error_gcode",
+            config.get("failure_gcode", config.get("on_failure_gcode", None))
+        )
         self._on_set_active_tool_gcode = config.get(
             "on_set_active_tool_gcode",
             config.get("set_active_tool_gcode", None),

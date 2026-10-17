@@ -31,13 +31,7 @@ class KtcSwitchSensor:
             self._setup_sensor()
 
     def _setup_sensor(self):
-        ppins = self.printer.lookup_object("pins")
-        # Allow multi-use pin if referenced elsewhere
-        clean_pin = self.pin_name.replace("^", "").replace("!", "").replace("~", "").strip()
-        ppins.allow_multi_use_pin(clean_pin)
-
         buttons = self.printer.load_object(self.config, "buttons")
-        # Pass [self.pin_name] (string), NOT [pin_params]
         buttons.register_buttons([self.pin_name], self._handle_button_event)
 
     def _handle_button_event(self, eventtime, state):
@@ -64,16 +58,57 @@ class KtcSafety:
         self.carriage_sensor: typing.Optional[KtcSwitchSensor] = None
         self._last_drop_eventtime: float = 0.0
 
-    def configure_inherited_params(self):
-        """Called during configure_inherited_params phase after all objects are loaded."""
-        pin = getattr(self.toolchanger, "tool_present_pin", None)
-        if pin and self.carriage_sensor is None:
+        # Register carriage sensor during __init__ before MCU connects and builds config
+        pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
+        if pin:
             self.carriage_sensor = KtcSwitchSensor(
                 self.printer,
                 self.config,
                 pin,
                 callback=self._handle_sensor_change,
             )
+
+    def configure_inherited_params(self):
+        """Called during configure_inherited_params phase after all objects are loaded."""
+        if self.carriage_sensor is None:
+            pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
+            if pin:
+                self.carriage_sensor = KtcSwitchSensor(
+                    self.printer,
+                    self.config,
+                    pin,
+                    callback=self._handle_sensor_change,
+                )
+
+    def _get_error_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
+        """Resolves failure gcode, prioritizing tool, then toolchanger, then top ktc object."""
+        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
+            gcode = getattr(tool, "_on_tool_change_error_gcode", None)
+            if gcode:
+                return gcode
+        gcode = getattr(self.toolchanger, "_on_tool_change_error_gcode", None)
+        if gcode:
+            return gcode
+        if self.toolchanger._ktc is not None:
+            gcode = getattr(self.toolchanger._ktc, "_on_tool_change_error_gcode", None)
+            if gcode:
+                return gcode
+        return "PAUSE"
+
+    def _get_drop_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
+        """Resolves drop gcode, prioritizing tool, then toolchanger, then top ktc object."""
+        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
+            gcode = getattr(tool, "_on_tool_drop_gcode", None)
+            if gcode:
+                return gcode
+        gcode = getattr(self.toolchanger, "_on_tool_drop_gcode", None)
+        if gcode:
+            return gcode
+        if self.toolchanger._ktc is not None:
+            gcode = getattr(self.toolchanger._ktc, "_on_tool_drop_gcode", None)
+            if gcode:
+                return gcode
+        return "PAUSE"
 
     def _handle_sensor_change(
         self,
@@ -142,7 +177,7 @@ class KtcSafety:
 
             # Execute drop callback passing the tool as myself
             self._run_gcode_callback(
-                getattr(self.toolchanger, "_on_tool_drop_gcode", "PAUSE"),
+                self._get_drop_gcode(tool=tool_obj),
                 tool=tool_obj,
             )
 
@@ -162,14 +197,19 @@ class KtcSafety:
         4. If sensors exist on tools but none are triggered, returns False.
         5. Returns None if no sensor is configured anywhere.
         """
+        # If a specific tool is provided and valid, only check THAT tool or the carriage
         if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
             if getattr(tool, "tool_present_sensor", None) is not None:
                 return tool.tool_present_sensor.is_triggered()
+            if self.carriage_sensor is not None:
+                return self.carriage_sensor.is_triggered()
+            return None
 
+        # Tool is unspecified or in INVALID_TOOLS (e.g. reboot check or unlock)
         if self.carriage_sensor is not None:
             return self.carriage_sensor.is_triggered()
 
-        # If tool is unspecified or in INVALID_TOOLS, check all configured tool sensors
+        # Check all configured tool sensors on this toolchanger
         tool_sensors = [
             t.tool_present_sensor
             for t in self.toolchanger.tools.values()
@@ -182,11 +222,22 @@ class KtcSafety:
 
     def has_sensor(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> bool:
         """Returns True if any physical sensor is available for this toolchanger or tool."""
-        return self.query_tool_present(tool) is not None
+        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
+            return (
+                getattr(tool, "tool_present_sensor", None) is not None
+                or self.carriage_sensor is not None
+            )
+        return (
+            self.carriage_sensor is not None
+            or any(getattr(t, "tool_present_sensor", None) is not None for t in self.toolchanger.tools.values())
+        )
 
     def verify_tool_pickup(self, tool: "ktc_tool.KtcTool"):
         """Called after tool_select_gcode to verify tool is physically mounted."""
         if not self.enabled or not getattr(self.toolchanger, "verify_tool_pickup", True):
+            return
+
+        if not self.has_sensor(tool):
             return
 
         # Give reactor a brief moment to process any pending async button state events
@@ -204,7 +255,7 @@ class KtcSafety:
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
             self._run_gcode_callback(
-                getattr(self.toolchanger, "_on_tool_change_error_gcode", "PAUSE"),
+                self._get_error_gcode(tool=tool),
                 tool=tool,
             )
             raise self.printer.command_error(msg)
@@ -212,6 +263,9 @@ class KtcSafety:
     def verify_tool_dropoff(self, tool: "ktc_tool.KtcTool"):
         """Called after tool_deselect_gcode to verify tool is physically detached."""
         if not self.enabled or not getattr(self.toolchanger, "verify_tool_dropoff", True):
+            return
+
+        if not self.has_sensor(tool) and getattr(tool, "dock_sensor", None) is None:
             return
 
         # Give reactor a brief moment to process any pending async button state events
@@ -237,7 +291,7 @@ class KtcSafety:
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
             self._run_gcode_callback(
-                getattr(self.toolchanger, "_on_tool_change_error_gcode", "PAUSE"),
+                self._get_error_gcode(tool=tool),
                 tool=tool,
             )
             raise self.printer.command_error(msg)
@@ -305,8 +359,14 @@ class KtcSafety:
             if tool and tool not in self.toolchanger.INVALID_TOOLS:
                 tool.state = tool.StateType.ERROR
 
+            reboot_gcode = (
+                getattr(tool, "_on_reboot_tool_attached_gcode", None)
+                or getattr(self.toolchanger, "_on_reboot_tool_attached_gcode", None)
+                or (getattr(self.toolchanger._ktc, "_on_reboot_tool_attached_gcode", None) if self.toolchanger._ktc else None)
+                or ""
+            )
             self._run_gcode_callback(
-                getattr(self.toolchanger, "_on_reboot_tool_attached_gcode", ""),
+                reboot_gcode,
                 tool=tool,
             )
 
