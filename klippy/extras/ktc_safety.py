@@ -9,6 +9,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 from __future__ import annotations
+import logging
 import typing
 
 if typing.TYPE_CHECKING:
@@ -32,10 +33,11 @@ class KtcSwitchSensor:
 
     def _setup_sensor(self):
         buttons = self.printer.load_object(self.config, "buttons")
-        buttons.register_buttons([self.pin_name], self._handle_button_event)
+        buttons.register_debounce_button(self.pin_name, self._handle_button_event, self.config)
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
+        logging.info("KtcSwitchSensor [%s] state: %s", self.pin_name, self.state)
         if self.callback:
             self.callback(eventtime, self.state)
 
@@ -62,8 +64,6 @@ class KtcSafety:
         self._mounted_by_machine: bool = False
 
     def set_mounted_by_machine(self, value: bool):
-        self._mounted_by_machine = bool(value)
-
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
         if pin:
@@ -73,6 +73,9 @@ class KtcSafety:
                 pin,
                 callback=self._handle_sensor_change,
             )
+
+    def set_mounted_by_machine(self, value: bool):
+        self._mounted_by_machine = bool(value)
 
     def configure_inherited_params(self):
         """Called during configure_inherited_params phase after all objects are loaded."""
@@ -147,25 +150,21 @@ class KtcSafety:
         return ""
 
     def _is_printer_moving(self, eventtime: float) -> bool:
-        # Check print_stats (if printing from SD / virtual_sdcard)
-        print_stats = self.printer.lookup_object("print_stats", None)
-        if print_stats is not None:
-            try:
-                ps_state = print_stats.get_status(eventtime).get("state", "")
-                if ps_state == "printing":
-                    return True
-            except Exception:
-                pass
+        # Check idle_timeout (standard Klipper printing check as in filament_switch_sensor)
+        try:
+            idle_timeout = self.printer.lookup_object("idle_timeout", None)
+            if idle_timeout is not None and idle_timeout.get_status(eventtime).get("state", "") == "Printing":
+                return True
+        except Exception:
+            pass
 
-        # Check toolhead moves (if lookahead buffer is executing moves)
-        toolhead = self.printer.lookup_object("toolhead", None)
-        if toolhead is not None:
-            try:
-                cur_est = toolhead.estimated_print_time(eventtime)
-                if toolhead.print_time > (cur_est + 0.05):
-                    return True
-            except Exception:
-                pass
+        # Check print_stats (if printing from SD / virtual_sdcard)
+        try:
+            print_stats = self.printer.lookup_object("print_stats", None)
+            if print_stats is not None and print_stats.get_status(eventtime).get("state", "") == "printing":
+                return True
+        except Exception:
+            pass
 
         return False
 
@@ -447,9 +446,13 @@ class KtcSafety:
             is_present = self.query_tool_present(tool)
 
         if is_present is not True:
+            tool_sensor = getattr(tool, "tool_present_sensor", None)
+            pin_info = tool_sensor.pin_name if tool_sensor else "None"
+            sensor_state = tool_sensor.state if tool_sensor else "NoSensor"
             msg = (
                 f"KTC SAFETY ERROR: Pickup verification failed for tool '{tool.name}' "
-                f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached."
+                f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached. "
+                f"(pin: {pin_info}, state: {sensor_state})"
             )
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
