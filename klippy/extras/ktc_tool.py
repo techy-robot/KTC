@@ -228,6 +228,7 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             # Extended Tool Safety: Verify tool pickup
             if self.toolchanger and getattr(self.toolchanger, "safety", None):
                 self.toolchanger.safety.verify_tool_pickup(self)
+                self.toolchanger.safety.set_mounted_by_machine(True)
 
             if final_selected and self.state == self.StateType.SELECTED:
                 # Restore fan if has a fan.
@@ -242,6 +243,8 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 self._ktc.active_tool = self
                 self.log.track_tool_selected_start(self)
                 self.state = self.StateType.ACTIVE
+                if self.toolchanger:
+                    self.toolchanger.state = self.toolchanger.StateType.ENGAGED
 
             self.log.tool_stats[self.name].selects_completed += 1
 
@@ -312,6 +315,10 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             # Extended Tool Safety: Verify tool dropoff
             if self.toolchanger and getattr(self.toolchanger, "safety", None):
                 self.toolchanger.safety.verify_tool_dropoff(self)
+                self.toolchanger.safety.set_mounted_by_machine(False)
+
+            if self.toolchanger:
+                self.toolchanger.state = self.toolchanger.StateType.READY
         except Exception as e:
             self.log.always("KTC Tool %s failed to deselect: %s" % (self.name, str(e)))
             self.state = self.StateType.ERROR

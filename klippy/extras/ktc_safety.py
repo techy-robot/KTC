@@ -59,6 +59,10 @@ class KtcSafety:
         self._last_drop_eventtime: float = 0.0
         self._last_mount_eventtime: float = 0.0
         self._last_dismount_eventtime: float = 0.0
+        self._mounted_by_machine: bool = False
+
+    def set_mounted_by_machine(self, value: bool):
+        self._mounted_by_machine = bool(value)
 
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
@@ -142,6 +146,29 @@ class KtcSafety:
                 return gcode
         return ""
 
+    def _is_printer_moving(self, eventtime: float) -> bool:
+        # Check print_stats (if printing from SD / virtual_sdcard)
+        print_stats = self.printer.lookup_object("print_stats", None)
+        if print_stats is not None:
+            try:
+                ps_state = print_stats.get_status(eventtime).get("state", "")
+                if ps_state == "printing":
+                    return True
+            except Exception:
+                pass
+
+        # Check toolhead moves (if lookahead buffer is executing moves)
+        toolhead = self.printer.lookup_object("toolhead", None)
+        if toolhead is not None:
+            try:
+                cur_est = toolhead.estimated_print_time(eventtime)
+                if toolhead.print_time > (cur_est + 0.05):
+                    return True
+            except Exception:
+                pass
+
+        return False
+
     def _handle_sensor_change(
         self,
         eventtime: float,
@@ -174,10 +201,13 @@ class KtcSafety:
 
         # --- SENSOR STATE: UNTRIGGERED (False) -> Tool Detached / Dismounted / Dropped ---
         if not state:
-            if tc_state in (
-                self.toolchanger.StateType.ENGAGED,
-                self.toolchanger.StateType.ACTIVE,
-            ):
+            # Check if this detachment should be treated as an unexpected DROP:
+            # 1. The machine had mounted the tool and it came detached, OR
+            # 2. The printer was moving around and the tool was on the toolhead
+            is_machine_mounted = getattr(self, "_mounted_by_machine", False)
+            is_moving = self._is_printer_moving(eventtime)
+
+            if is_machine_mounted or is_moving:
                 # If event came from a specific tool, only process if it is the currently attached tool
                 if tool is not None and active_tool is not None and tool != active_tool:
                     return
@@ -198,9 +228,11 @@ class KtcSafety:
                     tool_obj.state = self.toolchanger.StateType.ERROR
 
                 self.toolchanger.state = self.toolchanger.StateType.ERROR
+                self._mounted_by_machine = False
 
+                reason = "during motion" if is_moving else "while mounted by machine"
                 msg = (
-                    f"KTC SAFETY ALERT: Tool drop detected on toolchanger '{self.toolchanger.name}'! "
+                    f"KTC SAFETY ALERT: Tool drop detected on toolchanger '{self.toolchanger.name}' ({reason})! "
                     f"Active tool '{tool_name}' detached unexpectedly."
                 )
                 if self.toolchanger.log:
@@ -213,8 +245,8 @@ class KtcSafety:
                     tool=tool_obj,
                 )
 
-            elif tc_state == self.toolchanger.StateType.READY:
-                # Manual dismount from idle/ready carriage
+            else:
+                # Manual dismount while idle / stationary
                 if eventtime - self._last_dismount_eventtime < 1.0:
                     return
                 self._last_dismount_eventtime = eventtime
@@ -226,24 +258,20 @@ class KtcSafety:
                 if self.toolchanger._ktc:
                     self.toolchanger._ktc.active_tool = self.toolchanger.TOOL_NONE
 
+                if self.toolchanger.state != self.toolchanger.StateType.ERROR:
+                    self.toolchanger.state = self.toolchanger.StateType.READY
+                if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
+                    if tool_obj.state != self.toolchanger.StateType.ERROR:
+                        tool_obj.state = self.toolchanger.StateType.READY
+
+                self._mounted_by_machine = False
+
                 msg = f"KTC SAFETY: Tool '{tool_name}' manually dismounted from '{self.toolchanger.name}'."
                 if self.toolchanger.log:
                     self.toolchanger.log.always(msg)
                 else:
                     self.printer.lookup_object("gcode").respond_info(msg)
 
-                self._run_gcode_callback(
-                    self._get_dismount_gcode(tool=tool_obj),
-                    tool=tool_obj,
-                )
-
-            elif tc_state == self.toolchanger.StateType.ERROR:
-                # Tool dismounted / removed while in ERROR state
-                if eventtime - self._last_dismount_eventtime < 1.0:
-                    return
-                self._last_dismount_eventtime = eventtime
-
-                tool_obj = active_tool if active_tool and active_tool not in self.toolchanger.INVALID_TOOLS else tool
                 self._run_gcode_callback(
                     self._get_dismount_gcode(tool=tool_obj),
                     tool=tool_obj,
@@ -268,6 +296,9 @@ class KtcSafety:
                 else "unknown"
             )
 
+            # Manual attachment or reconnection
+            self._mounted_by_machine = False
+
             if tc_state == self.toolchanger.StateType.ERROR:
                 # Tool reconnected after error / tool drop
                 if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
@@ -290,8 +321,8 @@ class KtcSafety:
                     tool=tool_obj,
                 )
 
-            elif tc_state == self.toolchanger.StateType.READY:
-                # Manual mount onto idle carriage
+            else:
+                # Manual mount onto carriage
                 if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
                     self.toolchanger.selected_tool = tool_obj
                     if self.toolchanger._ktc:
@@ -326,17 +357,20 @@ class KtcSafety:
         4. If sensors exist on tools but none are triggered, returns False.
         5. Returns None if no sensor is configured anywhere.
         """
-        # If a specific tool is provided and valid, only check THAT tool or the carriage
+        # If a specific tool is provided and valid, check tool sensor and/or carriage sensor
         if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
-            if getattr(tool, "tool_present_sensor", None) is not None:
-                return tool.tool_present_sensor.is_triggered()
+            tool_sensor = getattr(tool, "tool_present_sensor", None)
+            if tool_sensor is not None and self.carriage_sensor is not None:
+                return tool_sensor.is_triggered() or self.carriage_sensor.is_triggered()
+            if tool_sensor is not None:
+                return tool_sensor.is_triggered()
             if self.carriage_sensor is not None:
                 return self.carriage_sensor.is_triggered()
             return None
 
         # Tool is unspecified or in INVALID_TOOLS (e.g. reboot check or unlock)
-        if self.carriage_sensor is not None:
-            return self.carriage_sensor.is_triggered()
+        if self.carriage_sensor is not None and self.carriage_sensor.is_triggered():
+            return True
 
         # Check all configured tool sensors on this toolchanger
         tool_sensors = [
@@ -346,6 +380,9 @@ class KtcSafety:
         ]
         if tool_sensors:
             return any(s.is_triggered() for s in tool_sensors)
+
+        if self.carriage_sensor is not None:
+            return self.carriage_sensor.is_triggered()
 
         return None
 
@@ -369,18 +406,28 @@ class KtcSafety:
         if not self.has_sensor(tool):
             return
 
-        # Give reactor a brief moment to process any pending async button state events
-        reactor = self.printer.get_reactor()
-        reactor.pause(reactor.monotonic() + 0.05)
+        # Ensure all queued movements from tool_select_gcode have physically completed
+        toolhead = self.printer.lookup_object("toolhead", None)
+        if toolhead is not None:
+            toolhead.wait_moves()
 
+        # Wait up to 1.5 seconds for sensor event to be received across MCU/CAN bus
+        reactor = self.printer.get_reactor()
+        end_time = reactor.monotonic() + 1.5
         is_present = self.query_tool_present(tool)
-        if is_present is False:
+        while is_present is not True and reactor.monotonic() < end_time:
+            reactor.pause(reactor.monotonic() + 0.05)
+            is_present = self.query_tool_present(tool)
+
+        if is_present is not True:
             msg = (
                 f"KTC SAFETY ERROR: Pickup verification failed for tool '{tool.name}' "
                 f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached."
             )
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
+            else:
+                self.printer.lookup_object("gcode").respond_info(msg)
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
             self._run_gcode_callback(
@@ -397,9 +444,22 @@ class KtcSafety:
         if not self.has_sensor(tool) and getattr(tool, "dock_sensor", None) is None:
             return
 
-        # Give reactor a brief moment to process any pending async button state events
+        # Ensure all queued movements from tool_deselect_gcode have physically completed
+        toolhead = self.printer.lookup_object("toolhead", None)
+        if toolhead is not None:
+            toolhead.wait_moves()
+
+        # Wait up to 1.5 seconds for sensor events to settle
         reactor = self.printer.get_reactor()
-        reactor.pause(reactor.monotonic() + 0.05)
+        end_time = reactor.monotonic() + 1.5
+        while reactor.monotonic() < end_time:
+            is_present = self.query_tool_present(tool)
+            dock_sensor = getattr(tool, "dock_sensor", None)
+            dock_ok = dock_sensor.is_triggered() if dock_sensor is not None else None
+            # Success when tool is no longer on carriage and dock sensor (if present) confirms parked
+            if is_present is False and (dock_ok is True or dock_ok is None):
+                return
+            reactor.pause(reactor.monotonic() + 0.05)
 
         is_present = self.query_tool_present(tool)
         dock_sensor = getattr(tool, "dock_sensor", None)
@@ -417,6 +477,8 @@ class KtcSafety:
             )
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
+            else:
+                self.printer.lookup_object("gcode").respond_info(msg)
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
             self._run_gcode_callback(
@@ -591,6 +653,8 @@ class KtcSafety:
                 f"KTC SAFETY: Unlocked '{self.toolchanger.name}'. "
                 "Carriage empty (TOOL_NONE, READY). Ready for tool selection."
             )
+
+        self._mounted_by_machine = False
 
         # Clear error on top ktc object if it was in error
         if self.toolchanger._ktc and self.toolchanger._ktc.state == self.toolchanger.StateType.ERROR:
