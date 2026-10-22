@@ -258,6 +258,9 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
 
     def deselect(self):    # pylint: disable=arguments-differ
         self.state = self.StateType.DESELECTING
+        if self.toolchanger:
+            self.toolchanger.state = self.toolchanger.StateType.CHANGING
+        self._ktc.state = self.StateType.CHANGING
         try:
             # Check if homed
             self._ktc.confirm_ready_for_toolchange(self)
@@ -319,10 +322,13 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
 
             if self.toolchanger:
                 self.toolchanger.state = self.toolchanger.StateType.READY
+            self._ktc.state = self.StateType.READY
         except Exception as e:
             self.log.always("KTC Tool %s failed to deselect: %s" % (self.name, str(e)))
             self.state = self.StateType.ERROR
             self._ktc.state = self.StateType.ERROR
+            if self.toolchanger:
+                self.toolchanger.state = self.toolchanger.StateType.ERROR
             raise e from e
 
     def _get_list_from_tool_traversal_conditional(

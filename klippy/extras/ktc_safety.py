@@ -180,8 +180,14 @@ class KtcSafety:
             return
 
         tc_state = self.toolchanger.state
+        active_tool = self.toolchanger.selected_tool
+        if (active_tool in self.toolchanger.INVALID_TOOLS or active_tool is None) and self.toolchanger._ktc:
+            active_tool = self.toolchanger._ktc.active_tool
+
+        target_tool = tool if tool is not None else active_tool
+
         # Suppress automatic reactions during intentional tool transitions or unconfigured states
-        if tc_state in (
+        transition_states = (
             self.toolchanger.StateType.NOT_CONFIGURED,
             self.toolchanger.StateType.CONFIGURING,
             self.toolchanger.StateType.CONFIGURED,
@@ -192,12 +198,33 @@ class KtcSafety:
             self.toolchanger.StateType.DISENGAGING,
             self.toolchanger.StateType.SELECTING,
             self.toolchanger.StateType.DESELECTING,
+        )
+        if tc_state in transition_states:
+            return
+
+        if self.toolchanger._ktc is not None and self.toolchanger._ktc.state in (
+            self.toolchanger.StateType.CHANGING,
+            self.toolchanger.StateType.SELECTING,
+            self.toolchanger.StateType.DESELECTING,
         ):
             return
 
-        active_tool = self.toolchanger.selected_tool
-        if (active_tool in self.toolchanger.INVALID_TOOLS or active_tool is None) and self.toolchanger._ktc:
-            active_tool = self.toolchanger._ktc.active_tool
+        if (
+            target_tool is not None
+            and target_tool not in self.toolchanger.INVALID_TOOLS
+            and target_tool.state in transition_states
+        ):
+            return
+
+        if any(
+            t.state in (
+                self.toolchanger.StateType.SELECTING,
+                self.toolchanger.StateType.DESELECTING,
+                self.toolchanger.StateType.CHANGING,
+            )
+            for t in self.toolchanger.tools.values()
+        ):
+            return
 
         # --- SENSOR STATE: UNTRIGGERED (False) -> Tool Detached / Dismounted / Dropped ---
         if not state:
