@@ -153,6 +153,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_SAFETY_ENABLE",
             "KTC_SAFETY_DISABLE",
             "KTC_SAFETY_QUERY",
+            "KTC_SAFETY_STATUS",
+            "KTC_STATUS",
         ]
         for cmd in handlers:
             func = getattr(self, "cmd_" + cmd)
@@ -1006,6 +1008,11 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         if tool_name:
             tool = self.all_tools.get(tool_name, None)
             if not tool:
+                for t_name, t_obj in self.all_tools.items():
+                    if t_name.lower() == tool_name.lower():
+                        tool = t_obj
+                        break
+            if not tool:
                 raise gcmd.error("Tool %s not found" % (tool_name))
         elif tool_nr != self.TOOL_NUMBERLESS_N:
             if tool_nr not in self.all_tools_by_number:
@@ -1033,6 +1040,11 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             toolchanger = self.printer.lookup_object(
                 "ktc_toolchanger " + toolchanger_name, None
             )
+            if not toolchanger:
+                for tc_name, tc_obj in self.all_toolchangers.items():
+                    if tc_name.lower() == toolchanger_name.lower():
+                        toolchanger = tc_obj
+                        break
             if not toolchanger:
                 raise gcmd.error("Toolchanger %s not found" % (toolchanger_name))
         elif explicit:
@@ -1222,56 +1234,80 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             if tc_name:
                 tc = self.all_toolchangers.get(tc_name, None)
                 if not tc:
+                    for name, obj in self.all_toolchangers.items():
+                        if name.lower() == tc_name.lower():
+                            tc = obj
+                            break
+                if not tc:
                     raise gcmd.error(f"Toolchanger {tc_name} not found")
             else:
                 tc = self.default_toolchanger
 
             tool = self.get_tool_from_gcmd(gcmd, allow_invalid_active_tool=True, explicit=True)
             if tool is None and tc:
-                tool = tc.selected_tool if tc.selected_tool not in tc.INVALID_TOOLS else None
+                if tc.selected_tool not in tc.INVALID_TOOLS and tc.selected_tool is not None:
+                    tool = tc.selected_tool
+                elif self.active_tool not in self.INVALID_TOOLS and self.active_tool is not None:
+                    tool = self.active_tool
 
             if not tc or not getattr(tc, "safety", None):
                 raise gcmd.error("No valid toolchanger or safety module found.")
 
             safety = tc.safety
             is_present = safety.query_tool_present(tool)
-            carriage_status = (
-                "TRIGGERED" if (safety.carriage_sensor and safety.carriage_sensor.is_triggered())
-                else "OPEN" if safety.carriage_sensor
-                else "NOT_CONFIGURED"
-            )
+            if safety.carriage_sensor:
+                c_trig = "TRIGGERED" if safety.carriage_sensor.is_triggered() else "OPEN"
+                c_inv = getattr(safety.carriage_sensor, "invert", False)
+                carriage_status = (
+                    f"{c_trig} (pin: {safety.carriage_sensor.pin_name}, raw: {safety.carriage_sensor.state}, invert: {c_inv})"
+                )
+            else:
+                carriage_status = "NOT_CONFIGURED"
 
             tool_reports = []
-            if tool:
-                th_status = (
-                    "TRIGGERED" if (getattr(tool, "tool_present_sensor", None) and tool.tool_present_sensor.is_triggered())
-                    else "OPEN" if getattr(tool, "tool_present_sensor", None)
-                    else "NOT_CONFIGURED"
-                )
-                dk_status = (
-                    "TRIGGERED" if (getattr(tool, "dock_sensor", None) and tool.dock_sensor.is_triggered())
-                    else "OPEN" if getattr(tool, "dock_sensor", None)
-                    else "NOT_CONFIGURED"
-                )
-                tool_reports.append(f"// Toolhead Sensor ({tool.name}): {th_status}")
-                tool_reports.append(f"// Dock Sensor ({tool.name}): {dk_status}")
-            else:
-                for t in tc.tools.values():
-                    th_sensor = getattr(t, "tool_present_sensor", None)
-                    dk_sensor = getattr(t, "dock_sensor", None)
-                    if th_sensor or dk_sensor:
-                        th_status = "TRIGGERED" if (th_sensor and th_sensor.is_triggered()) else "OPEN" if th_sensor else "NOT_CONFIGURED"
-                        dk_status = "TRIGGERED" if (dk_sensor and dk_sensor.is_triggered()) else "OPEN" if dk_sensor else "NOT_CONFIGURED"
-                        tool_reports.append(f"// Toolhead Sensor ({t.name}): {th_status}")
-                        tool_reports.append(f"// Dock Sensor ({t.name}): {dk_status}")
-                if not tool_reports:
-                    tool_reports.append("// Toolhead Sensor: NOT_CONFIGURED")
-                    tool_reports.append("// Dock Sensor: NOT_CONFIGURED")
+            tools_to_report = list(tc.tools.values())
+            if not tools_to_report:
+                tools_to_report = [
+                    t for t in self.all_tools.values()
+                    if t not in self.INVALID_TOOLS and getattr(t, "toolchanger", None) == tc
+                ]
+
+            for t in tools_to_report:
+                th_sensor = getattr(t, "tool_present_sensor", None)
+                dk_sensor = getattr(t, "dock_sensor", None)
+                if th_sensor:
+                    th_trig = "TRIGGERED" if th_sensor.is_triggered() else "OPEN"
+                    th_inv = getattr(th_sensor, "invert", False)
+                    tool_reports.append(
+                        f"// Toolhead Sensor ({t.name}): {th_trig} "
+                        f"(pin: {th_sensor.pin_name}, raw: {th_sensor.state}, invert: {th_inv})"
+                    )
+                else:
+                    tool_reports.append(f"// Toolhead Sensor ({t.name}): NOT_CONFIGURED")
+
+                if dk_sensor:
+                    dk_trig = "TRIGGERED" if dk_sensor.is_triggered() else "OPEN"
+                    dk_inv = getattr(dk_sensor, "invert", False)
+                    tool_reports.append(
+                        f"// Dock Sensor ({t.name}): {dk_trig} "
+                        f"(pin: {dk_sensor.pin_name}, raw: {dk_sensor.state}, invert: {dk_inv})"
+                    )
+
+            if not tool_reports:
+                tool_reports.append("// Toolhead Sensor: NOT_CONFIGURED")
+                tool_reports.append("// Dock Sensor: NOT_CONFIGURED")
+
+            active_name = (
+                tool.name if tool and tool not in self.INVALID_TOOLS
+                else tc.selected_tool.name if getattr(tc, "selected_tool", None) and tc.selected_tool not in self.INVALID_TOOLS
+                else "None"
+            )
 
             msg_lines = [
                 f"// --- KTC SAFETY STATUS ({tc.name}) ---",
                 f"// Safety Enabled: {safety.enabled}",
                 f"// Toolchanger State: {tc.state}",
+                f"// Active / Selected Tool: {active_name}",
                 f"// Tool Present: {is_present}",
                 f"// Carriage Sensor: {carriage_status}",
             ] + tool_reports
@@ -1281,6 +1317,14 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             raise self.printer.command_error(
                 f"Error querying safety with command {gcmd.get_commandline()}: {str(e)}"
             ) from e
+
+    cmd_KTC_SAFETY_STATUS_help = "Alias for KTC_SAFETY_QUERY: Query extended tool safety status."
+    def cmd_KTC_SAFETY_STATUS(self, gcmd: "gcode.GCodeCommand"):
+        self.cmd_KTC_SAFETY_QUERY(gcmd)
+
+    cmd_KTC_STATUS_help = "Alias for KTC_SAFETY_QUERY: Query extended tool safety status."
+    def cmd_KTC_STATUS(self, gcmd: "gcode.GCodeCommand"):
+        self.cmd_KTC_SAFETY_QUERY(gcmd)
 
 def load_config(config):
     # prof = cProfile.Profile()

@@ -106,10 +106,15 @@ class KtcToolchanger(KtcBaseChangerClass, KtcConstantsClass):
 
         # Set the active tool to the tool with the name from the persistent variables.
         # If not found in the tools that are loaded for this changer, set it to TOOL_UNKNOWN.
-        if selected_tool_name == self.TOOL_NONE.name:
+        if selected_tool_name == self.TOOL_NONE.name.lower():
             self.selected_tool = self.TOOL_NONE
         else:
-            self.selected_tool = self.tools.get(selected_tool_name, self.TOOL_UNKNOWN)
+            matched_tool = None
+            for t_name, t_obj in self.tools.items():
+                if t_name.lower() == selected_tool_name:
+                    matched_tool = t_obj
+                    break
+            self.selected_tool = matched_tool if matched_tool is not None else self.TOOL_UNKNOWN
 
         if self._ktc and self.selected_tool not in self.INVALID_TOOLS:
             self._ktc.active_tool = self.selected_tool

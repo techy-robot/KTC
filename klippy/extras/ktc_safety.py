@@ -21,11 +21,19 @@ if typing.TYPE_CHECKING:
 class KtcSwitchSensor:
     """Encapsulates a physical microswitch / optical sensor pin using Klipper's buttons."""
 
-    def __init__(self, printer, config: "configfile.ConfigWrapper", pin_name: str, callback=None):
+    def __init__(
+        self,
+        printer,
+        config: "configfile.ConfigWrapper",
+        pin_name: str,
+        callback=None,
+        invert: bool = False,
+    ):
         self.printer = printer
         self.config = config
         self.pin_name = pin_name.strip() if pin_name else ""
         self.callback = callback
+        self.invert: bool = bool(invert)
         self.state: bool = False
 
         if self.pin_name:
@@ -37,15 +45,18 @@ class KtcSwitchSensor:
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
-        logging.info("KtcSwitchSensor [%s] state: %s", self.pin_name, self.state)
+        logging.info(
+            "KtcSwitchSensor [%s] raw state: %s, triggered: %s",
+            self.pin_name, self.state, self.is_triggered()
+        )
         if self.callback:
-            self.callback(eventtime, self.state)
+            self.callback(eventtime, self.is_triggered())
 
     def query(self) -> bool:
-        return self.state
+        return self.is_triggered()
 
     def is_triggered(self) -> bool:
-        return self.state
+        return (not self.state) if self.invert else self.state
 
 
 class KtcSafety:
@@ -63,15 +74,16 @@ class KtcSafety:
         self._last_dismount_eventtime: float = 0.0
         self._mounted_by_machine: bool = False
 
-    def set_mounted_by_machine(self, value: bool):
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
         if pin:
+            invert = getattr(self.toolchanger, "tool_present_invert", False) or self.config.getboolean("tool_present_invert", False)
             self.carriage_sensor = KtcSwitchSensor(
                 self.printer,
                 self.config,
                 pin,
                 callback=self._handle_sensor_change,
+                invert=invert,
             )
 
     def set_mounted_by_machine(self, value: bool):
@@ -82,11 +94,13 @@ class KtcSafety:
         if self.carriage_sensor is None:
             pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
             if pin:
+                invert = getattr(self.toolchanger, "tool_present_invert", False) or self.config.getboolean("tool_present_invert", False)
                 self.carriage_sensor = KtcSwitchSensor(
                     self.printer,
                     self.config,
                     pin,
                     callback=self._handle_sensor_change,
+                    invert=invert,
                 )
 
     def _get_error_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
@@ -369,7 +383,13 @@ class KtcSafety:
 
     def get_physically_attached_tool(self) -> typing.Optional["ktc_tool.KtcTool"]:
         """Scans all tools on this toolchanger to find which tool's present sensor is triggered."""
-        for tool in self.toolchanger.tools.values():
+        tools_list = list(self.toolchanger.tools.values())
+        if not tools_list and getattr(self.toolchanger, "_ktc", None):
+            tools_list = [
+                t for t in self.toolchanger._ktc.all_tools.values()
+                if t not in self.toolchanger.INVALID_TOOLS and getattr(t, "toolchanger", None) == self.toolchanger
+            ]
+        for tool in tools_list:
             sensor = getattr(tool, "tool_present_sensor", None)
             if sensor is not None and sensor.is_triggered():
                 return tool
@@ -399,9 +419,15 @@ class KtcSafety:
             return True
 
         # Check all configured tool sensors on this toolchanger
+        tools_list = list(self.toolchanger.tools.values())
+        if not tools_list and getattr(self.toolchanger, "_ktc", None):
+            tools_list = [
+                t for t in self.toolchanger._ktc.all_tools.values()
+                if t not in self.toolchanger.INVALID_TOOLS and getattr(t, "toolchanger", None) == self.toolchanger
+            ]
         tool_sensors = [
             t.tool_present_sensor
-            for t in self.toolchanger.tools.values()
+            for t in tools_list
             if getattr(t, "tool_present_sensor", None) is not None
         ]
         if tool_sensors:
@@ -419,9 +445,15 @@ class KtcSafety:
                 getattr(tool, "tool_present_sensor", None) is not None
                 or self.carriage_sensor is not None
             )
+        tools_list = list(self.toolchanger.tools.values())
+        if not tools_list and getattr(self.toolchanger, "_ktc", None):
+            tools_list = [
+                t for t in self.toolchanger._ktc.all_tools.values()
+                if t not in self.toolchanger.INVALID_TOOLS and getattr(t, "toolchanger", None) == self.toolchanger
+            ]
         return (
             self.carriage_sensor is not None
-            or any(getattr(t, "tool_present_sensor", None) is not None for t in self.toolchanger.tools.values())
+            or any(getattr(t, "tool_present_sensor", None) is not None for t in tools_list)
         )
 
     def verify_tool_pickup(self, tool: "ktc_tool.KtcTool"):
@@ -448,11 +480,14 @@ class KtcSafety:
         if is_present is not True:
             tool_sensor = getattr(tool, "tool_present_sensor", None)
             pin_info = tool_sensor.pin_name if tool_sensor else "None"
-            sensor_state = tool_sensor.state if tool_sensor else "NoSensor"
+            raw_state = tool_sensor.state if tool_sensor else "NoSensor"
+            inv_info = getattr(tool_sensor, "invert", False) if tool_sensor else False
+            trig_info = tool_sensor.is_triggered() if tool_sensor else False
             msg = (
                 f"KTC SAFETY ERROR: Pickup verification failed for tool '{tool.name}' "
                 f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached. "
-                f"(pin: {pin_info}, state: {sensor_state})"
+                f"(pin: {pin_info}, raw: {raw_state}, triggered: {trig_info}, invert: {inv_info}). "
+                "If the switch is physically engaged when attached, remove '!' from the pin name or set 'tool_present_invert: True'."
             )
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
@@ -535,12 +570,23 @@ class KtcSafety:
                 )
             )
             if persisted_name not in (
-                self.toolchanger.TOOL_NONE.name,
-                self.toolchanger.TOOL_UNKNOWN.name,
-            ) and persisted_name in self.toolchanger.tools:
-                tool = self.toolchanger.tools[persisted_name]
-                self.toolchanger.selected_tool = tool
-            elif persisted_name == self.toolchanger.TOOL_NONE.name:
+                self.toolchanger.TOOL_NONE.name.lower(),
+                self.toolchanger.TOOL_UNKNOWN.name.lower(),
+            ):
+                matched = None
+                for t_name, t_obj in self.toolchanger.tools.items():
+                    if t_name.lower() == persisted_name:
+                        matched = t_obj
+                        break
+                if matched is None and getattr(self.toolchanger, "_ktc", None):
+                    for t_name, t_obj in self.toolchanger._ktc.all_tools.items():
+                        if t_name.lower() == persisted_name and getattr(t_obj, "toolchanger", None) == self.toolchanger:
+                            matched = t_obj
+                            break
+                if matched:
+                    tool = matched
+                    self.toolchanger.selected_tool = tool
+            elif persisted_name == self.toolchanger.TOOL_NONE.name.lower():
                 self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
 
         if (tool in self.toolchanger.INVALID_TOOLS or tool is None) and self.toolchanger._ktc:
@@ -633,9 +679,23 @@ class KtcSafety:
                     "selected_tool", self.toolchanger.TOOL_UNKNOWN.name
                 )
             )
-            if persisted_name in self.toolchanger.tools:
-                self.toolchanger.selected_tool = self.toolchanger.tools[persisted_name]
-            elif persisted_name == self.toolchanger.TOOL_NONE.name:
+            if persisted_name not in (
+                self.toolchanger.TOOL_NONE.name.lower(),
+                self.toolchanger.TOOL_UNKNOWN.name.lower(),
+            ):
+                matched = None
+                for t_name, t_obj in self.toolchanger.tools.items():
+                    if t_name.lower() == persisted_name:
+                        matched = t_obj
+                        break
+                if matched is None and getattr(self.toolchanger, "_ktc", None):
+                    for t_name, t_obj in self.toolchanger._ktc.all_tools.items():
+                        if t_name.lower() == persisted_name and getattr(t_obj, "toolchanger", None) == self.toolchanger:
+                            matched = t_obj
+                            break
+                if matched:
+                    self.toolchanger.selected_tool = matched
+            elif persisted_name == self.toolchanger.TOOL_NONE.name.lower():
                 self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
 
         # 2. Query physical sensor with the resolved tool
