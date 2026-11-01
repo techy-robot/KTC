@@ -199,6 +199,8 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             self.log.track_tool_selecting_start(self)
 
             # Run the gcode for pickup.
+            if self.toolchanger and getattr(self.toolchanger, "safety", None):
+                self.toolchanger.safety.begin_toolchange()
             try:
                 self.state = self.StateType.SELECTING
                 self.toolchanger.state = self.toolchanger.StateType.CHANGING
@@ -255,12 +257,17 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             raise e from e
         finally:
             self.log.track_tool_selecting_end(self)
+            if self.toolchanger and getattr(self.toolchanger, "safety", None):
+                self.toolchanger.safety.end_toolchange()
 
     def deselect(self):    # pylint: disable=arguments-differ
         self.state = self.StateType.DESELECTING
         if self.toolchanger:
             self.toolchanger.state = self.toolchanger.StateType.CHANGING
         self._ktc.state = self.StateType.CHANGING
+        if self.toolchanger and getattr(self.toolchanger, "safety", None):
+            self.toolchanger.safety.begin_toolchange()
+            self.toolchanger.safety.set_mounted_by_machine(False)
         try:
             # Check if homed
             self._ktc.confirm_ready_for_toolchange(self)
@@ -318,7 +325,6 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             # Extended Tool Safety: Verify tool dropoff
             if self.toolchanger and getattr(self.toolchanger, "safety", None):
                 self.toolchanger.safety.verify_tool_dropoff(self)
-                self.toolchanger.safety.set_mounted_by_machine(False)
 
             if self.toolchanger:
                 self.toolchanger.state = self.toolchanger.StateType.READY
@@ -330,6 +336,9 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
             if self.toolchanger:
                 self.toolchanger.state = self.toolchanger.StateType.ERROR
             raise e from e
+        finally:
+            if self.toolchanger and getattr(self.toolchanger, "safety", None):
+                self.toolchanger.safety.end_toolchange()
 
     def _get_list_from_tool_traversal_conditional(
         self, start_tool: KtcBaseToolClass, param: str,

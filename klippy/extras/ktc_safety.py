@@ -38,8 +38,15 @@ class KtcSwitchSensor:
             self._setup_sensor()
 
     def _setup_sensor(self):
+        try:
+            ppins = self.printer.lookup_object("pins")
+            clean_pin = self.pin_name.replace("^", "").replace("!", "").replace("~", "").strip()
+            ppins.allow_multi_use_pin(clean_pin)
+        except Exception:
+            pass
+
         buttons = self.printer.load_object(self.config, "buttons")
-        buttons.register_debounce_button(self.pin_name, self._handle_button_event, self.config)
+        buttons.register_buttons([self.pin_name], self._handle_button_event)
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
@@ -68,6 +75,7 @@ class KtcSafety:
         self._last_mount_eventtime: float = 0.0
         self._last_dismount_eventtime: float = 0.0
         self._mounted_by_machine: bool = False
+        self._in_toolchange: bool = False
 
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
@@ -78,6 +86,12 @@ class KtcSafety:
                 pin,
                 callback=self._handle_sensor_change,
             )
+
+    def begin_toolchange(self):
+        self._in_toolchange = True
+
+    def end_toolchange(self):
+        self._in_toolchange = False
 
     def set_mounted_by_machine(self, value: bool):
         self._mounted_by_machine = bool(value)
@@ -180,7 +194,7 @@ class KtcSafety:
         tool: typing.Optional["ktc_tool.KtcTool"] = None,
     ):
         """Real-time callback from switch pin change."""
-        if not self.enabled:
+        if not self.enabled or self._in_toolchange:
             return
 
         tc_state = self.toolchanger.state
