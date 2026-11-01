@@ -54,8 +54,6 @@ PARAMS_TO_INHERIT = {"_engage_gcode": "",
                      "_on_set_active_tool_gcode": "",
                      "_on_tool_mount_gcode": "",
                      "_on_tool_dismount_gcode": "",
-                     "tool_present_invert": False,
-                     "dock_invert": False,
                      }
 
 class KtcConfigurableEnum(Enum):
@@ -137,12 +135,6 @@ class KtcBaseClass:
         self.dock_pin = config.get(
             "dock_pin",
             config.get("dock_sensor", None)
-        )
-        self.tool_present_invert = config.getboolean(
-            "tool_present_invert", None
-        )
-        self.dock_invert = config.getboolean(
-            "dock_invert", None
         )
         self.prevent_toolchange_on_reboot_attached = config.getboolean(
             "prevent_toolchange_on_reboot_attached", None)

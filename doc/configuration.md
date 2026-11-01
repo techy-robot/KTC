@@ -147,17 +147,9 @@ When not specified they will be initialized with the default value as below.
 #   Can be configured on [ktc_toolchanger] (carriage sensor) or [ktc_tool] (toolhead sensor).
 #   Supports hardware MCU pins with optional pullup (^) and inversion (!), e.g. ^!PG12.
 #   If not configured, safety transparently falls back to software state.
-
-#tool_present_invert = False
-#   Set to True if your microswitch or optical switch reports logical 0 / released when attached.
-#   Alternatively, you can invert the pin directly in 'tool_present_pin' using '!' (e.g. ^!PG12).
-
 #dock_pin = None
 #   Optional MCU input pin connected to a switch on the tool dock.
 #   Can also be named dock_sensor. Configured on [ktc_tool].
-
-#dock_invert = False
-#   Set to True to invert dock sensor logical trigger polarity.
 
 #prevent_toolchange_on_reboot_attached = True
 #   If True and a tool presence switch detects a tool is attached on startup/reboot,

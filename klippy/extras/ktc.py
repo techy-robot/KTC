@@ -153,8 +153,6 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             "KTC_SAFETY_ENABLE",
             "KTC_SAFETY_DISABLE",
             "KTC_SAFETY_QUERY",
-            "KTC_SAFETY_STATUS",
-            "KTC_STATUS",
         ]
         for cmd in handlers:
             func = getattr(self, "cmd_" + cmd)
@@ -1257,9 +1255,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             is_present = safety.query_tool_present(tool)
             if safety.carriage_sensor:
                 c_trig = "TRIGGERED" if safety.carriage_sensor.is_triggered() else "OPEN"
-                c_inv = getattr(safety.carriage_sensor, "invert", False)
                 carriage_status = (
-                    f"{c_trig} (pin: {safety.carriage_sensor.pin_name}, raw: {safety.carriage_sensor.state}, invert: {c_inv})"
+                    f"{c_trig} (pin: {safety.carriage_sensor.pin_name}, state: {safety.carriage_sensor.state})"
                 )
             else:
                 carriage_status = "NOT_CONFIGURED"
@@ -1277,20 +1274,18 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                 dk_sensor = getattr(t, "dock_sensor", None)
                 if th_sensor:
                     th_trig = "TRIGGERED" if th_sensor.is_triggered() else "OPEN"
-                    th_inv = getattr(th_sensor, "invert", False)
                     tool_reports.append(
                         f"// Toolhead Sensor ({t.name}): {th_trig} "
-                        f"(pin: {th_sensor.pin_name}, raw: {th_sensor.state}, invert: {th_inv})"
+                        f"(pin: {th_sensor.pin_name}, state: {th_sensor.state})"
                     )
                 else:
                     tool_reports.append(f"// Toolhead Sensor ({t.name}): NOT_CONFIGURED")
 
                 if dk_sensor:
                     dk_trig = "TRIGGERED" if dk_sensor.is_triggered() else "OPEN"
-                    dk_inv = getattr(dk_sensor, "invert", False)
                     tool_reports.append(
                         f"// Dock Sensor ({t.name}): {dk_trig} "
-                        f"(pin: {dk_sensor.pin_name}, raw: {dk_sensor.state}, invert: {dk_inv})"
+                        f"(pin: {dk_sensor.pin_name}, state: {dk_sensor.state})"
                     )
 
             if not tool_reports:
@@ -1317,14 +1312,6 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             raise self.printer.command_error(
                 f"Error querying safety with command {gcmd.get_commandline()}: {str(e)}"
             ) from e
-
-    cmd_KTC_SAFETY_STATUS_help = "Alias for KTC_SAFETY_QUERY: Query extended tool safety status."
-    def cmd_KTC_SAFETY_STATUS(self, gcmd: "gcode.GCodeCommand"):
-        self.cmd_KTC_SAFETY_QUERY(gcmd)
-
-    cmd_KTC_STATUS_help = "Alias for KTC_SAFETY_QUERY: Query extended tool safety status."
-    def cmd_KTC_STATUS(self, gcmd: "gcode.GCodeCommand"):
-        self.cmd_KTC_SAFETY_QUERY(gcmd)
 
 def load_config(config):
     # prof = cProfile.Profile()

@@ -55,14 +55,12 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 config,
                 self.tool_present_pin,
                 callback=self._handle_tool_present_change,
-                invert=getattr(self, "tool_present_invert", False),
             )
         if self.dock_pin:
             self.dock_sensor = KtcSwitchSensor(
                 self.printer,
                 config,
                 self.dock_pin,
-                invert=getattr(self, "dock_invert", False),
             )
 
     def _handle_tool_present_change(self, eventtime, state):
@@ -119,14 +117,12 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 self.config,
                 self.tool_present_pin,
                 callback=self._handle_tool_present_change,
-                invert=getattr(self, "tool_present_invert", False),
             )
         if self.dock_pin and self.dock_sensor is None:
             self.dock_sensor = KtcSwitchSensor(
                 self.printer,
                 self.config,
                 self.dock_pin,
-                invert=getattr(self, "dock_invert", False),
             )
 
         self.state = self.StateType.CONFIGURED

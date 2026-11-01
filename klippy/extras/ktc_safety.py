@@ -27,13 +27,11 @@ class KtcSwitchSensor:
         config: "configfile.ConfigWrapper",
         pin_name: str,
         callback=None,
-        invert: bool = False,
     ):
         self.printer = printer
         self.config = config
         self.pin_name = pin_name.strip() if pin_name else ""
         self.callback = callback
-        self.invert: bool = bool(invert)
         self.state: bool = False
 
         if self.pin_name:
@@ -45,18 +43,15 @@ class KtcSwitchSensor:
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
-        logging.info(
-            "KtcSwitchSensor [%s] raw state: %s, triggered: %s",
-            self.pin_name, self.state, self.is_triggered()
-        )
+        logging.info("KtcSwitchSensor [%s] state: %s", self.pin_name, self.state)
         if self.callback:
-            self.callback(eventtime, self.is_triggered())
+            self.callback(eventtime, self.state)
 
     def query(self) -> bool:
-        return self.is_triggered()
+        return self.state
 
     def is_triggered(self) -> bool:
-        return (not self.state) if self.invert else self.state
+        return self.state
 
 
 class KtcSafety:
@@ -77,13 +72,11 @@ class KtcSafety:
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
         if pin:
-            invert = getattr(self.toolchanger, "tool_present_invert", False) or self.config.getboolean("tool_present_invert", False)
             self.carriage_sensor = KtcSwitchSensor(
                 self.printer,
                 self.config,
                 pin,
                 callback=self._handle_sensor_change,
-                invert=invert,
             )
 
     def set_mounted_by_machine(self, value: bool):
@@ -94,13 +87,11 @@ class KtcSafety:
         if self.carriage_sensor is None:
             pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
             if pin:
-                invert = getattr(self.toolchanger, "tool_present_invert", False) or self.config.getboolean("tool_present_invert", False)
                 self.carriage_sensor = KtcSwitchSensor(
                     self.printer,
                     self.config,
                     pin,
                     callback=self._handle_sensor_change,
-                    invert=invert,
                 )
 
     def _get_error_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
@@ -481,13 +472,10 @@ class KtcSafety:
             tool_sensor = getattr(tool, "tool_present_sensor", None)
             pin_info = tool_sensor.pin_name if tool_sensor else "None"
             raw_state = tool_sensor.state if tool_sensor else "NoSensor"
-            inv_info = getattr(tool_sensor, "invert", False) if tool_sensor else False
-            trig_info = tool_sensor.is_triggered() if tool_sensor else False
             msg = (
                 f"KTC SAFETY ERROR: Pickup verification failed for tool '{tool.name}' "
-                f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached. "
-                f"(pin: {pin_info}, raw: {raw_state}, triggered: {trig_info}, invert: {inv_info}). "
-                "If the switch is physically engaged when attached, remove '!' from the pin name or set 'tool_present_invert: True'."
+                f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached "
+                f"(pin: {pin_info}, state: {raw_state})."
             )
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
