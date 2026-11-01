@@ -318,6 +318,8 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
                 )
 
             self._ktc.active_tool = self.TOOL_NONE  # Dropoff successfull
+            if self.toolchanger:
+                self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
             self.log.track_tool_deselecting_end(
                 self
             )  # Log the time it takes for tool change.

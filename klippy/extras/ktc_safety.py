@@ -33,6 +33,8 @@ class KtcSwitchSensor:
         self.pin_name = pin_name.strip() if pin_name else ""
         self.callback = callback
         self.state: bool = False
+        self.event_count: int = 0
+        self.last_eventtime: float = 0.0
 
         if self.pin_name:
             self._setup_sensor()
@@ -50,7 +52,14 @@ class KtcSwitchSensor:
 
     def _handle_button_event(self, eventtime, state):
         self.state = bool(state)
-        logging.info("KtcSwitchSensor [%s] state: %s", self.pin_name, self.state)
+        self.event_count += 1
+        self.last_eventtime = eventtime
+        logging.info(
+            "KtcSwitchSensor [%s] event #%d: state=%s",
+            self.pin_name,
+            self.event_count,
+            self.state,
+        )
         if self.callback:
             self.callback(eventtime, self.state)
 
@@ -483,13 +492,17 @@ class KtcSafety:
             is_present = self.query_tool_present(tool)
 
         if is_present is not True:
-            tool_sensor = getattr(tool, "tool_present_sensor", None)
-            pin_info = tool_sensor.pin_name if tool_sensor else "None"
-            raw_state = tool_sensor.state if tool_sensor else "NoSensor"
+            sensor = getattr(tool, "tool_present_sensor", None) or self.carriage_sensor
+            if sensor:
+                diag = (
+                    f" (pin: {sensor.pin_name}, state: {sensor.state}, events: {sensor.event_count}). "
+                    "Invert pin logic with '!' in pin name if reversed (e.g. '!pin')"
+                )
+            else:
+                diag = ""
             msg = (
                 f"KTC SAFETY ERROR: Pickup verification failed for tool '{tool.name}' "
-                f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached "
-                f"(pin: {pin_info}, state: {raw_state})."
+                f"on toolchanger '{self.toolchanger.name}'. Switch indicates tool is not attached{diag}."
             )
             if self.toolchanger.log:
                 self.toolchanger.log.always(msg)
@@ -533,11 +546,20 @@ class KtcSafety:
         dock_ok = dock_sensor.is_triggered() if dock_sensor is not None else None
 
         if is_present is True or dock_ok is False:
-            detail = (
-                "Switch indicates tool is still attached"
-                if is_present is True
-                else "Dock sensor indicates tool not seated in dock"
-            )
+            if is_present is True:
+                sensor = getattr(tool, "tool_present_sensor", None) or self.carriage_sensor
+                if sensor:
+                    diag = (
+                        f" (pin: {sensor.pin_name}, state: {sensor.state}, events: {sensor.event_count}). "
+                        "Invert pin logic with '!' in pin name if reversed (e.g. '!pin')"
+                    )
+                else:
+                    diag = ""
+                detail = f"Switch indicates tool is still attached{diag}"
+            else:
+                dock_sensor = getattr(tool, "dock_sensor", None)
+                diag = f" (pin: {dock_sensor.pin_name})" if dock_sensor else ""
+                detail = f"Dock sensor indicates tool not seated in dock{diag}"
             msg = (
                 f"KTC SAFETY ERROR: Dropoff verification failed for tool '{tool.name}' "
                 f"on toolchanger '{self.toolchanger.name}'. {detail}."

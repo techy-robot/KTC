@@ -1256,7 +1256,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             if safety.carriage_sensor:
                 c_trig = "TRIGGERED" if safety.carriage_sensor.is_triggered() else "OPEN"
                 carriage_status = (
-                    f"{c_trig} (pin: {safety.carriage_sensor.pin_name}, state: {safety.carriage_sensor.state})"
+                    f"{c_trig} (pin: {safety.carriage_sensor.pin_name}, state: {safety.carriage_sensor.state}, "
+                    f"events: {safety.carriage_sensor.event_count})"
                 )
             else:
                 carriage_status = "NOT_CONFIGURED"
@@ -1276,7 +1277,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                     th_trig = "TRIGGERED" if th_sensor.is_triggered() else "OPEN"
                     tool_reports.append(
                         f"// Toolhead Sensor ({t.name}): {th_trig} "
-                        f"(pin: {th_sensor.pin_name}, state: {th_sensor.state})"
+                        f"(pin: {th_sensor.pin_name}, state: {th_sensor.state}, "
+                        f"events: {th_sensor.event_count})"
                     )
                 else:
                     tool_reports.append(f"// Toolhead Sensor ({t.name}): NOT_CONFIGURED")
@@ -1285,7 +1287,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                     dk_trig = "TRIGGERED" if dk_sensor.is_triggered() else "OPEN"
                     tool_reports.append(
                         f"// Dock Sensor ({t.name}): {dk_trig} "
-                        f"(pin: {dk_sensor.pin_name}, state: {dk_sensor.state})"
+                        f"(pin: {dk_sensor.pin_name}, state: {dk_sensor.state}, "
+                        f"events: {dk_sensor.event_count})"
                     )
 
             if not tool_reports:
