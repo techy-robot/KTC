@@ -121,65 +121,31 @@ class KtcSafety:
                     callback=self._handle_sensor_change,
                 )
 
+    def _resolve_gcode_param(
+        self,
+        attr_name: str,
+        tool: typing.Optional["ktc_tool.KtcTool"] = None,
+        default: str = "",
+    ) -> str:
+        """Resolves gcode parameter, prioritizing tool, then toolchanger, then top ktc object."""
+        for obj in (tool, self.toolchanger, getattr(self.toolchanger, "_ktc", None)):
+            if obj is not None and obj not in getattr(self.toolchanger, "INVALID_TOOLS", ()):
+                val = getattr(obj, attr_name, None)
+                if val:
+                    return val
+        return default
+
     def _get_error_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
-        """Resolves failure gcode, prioritizing tool, then toolchanger, then top ktc object."""
-        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
-            gcode = getattr(tool, "_on_tool_change_error_gcode", None)
-            if gcode:
-                return gcode
-        gcode = getattr(self.toolchanger, "_on_tool_change_error_gcode", None)
-        if gcode:
-            return gcode
-        if self.toolchanger._ktc is not None:
-            gcode = getattr(self.toolchanger._ktc, "_on_tool_change_error_gcode", None)
-            if gcode:
-                return gcode
-        return "PAUSE"
+        return self._resolve_gcode_param("_on_tool_change_error_gcode", tool=tool, default="PAUSE")
 
     def _get_drop_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
-        """Resolves drop gcode, prioritizing tool, then toolchanger, then top ktc object."""
-        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
-            gcode = getattr(tool, "_on_tool_drop_gcode", None)
-            if gcode:
-                return gcode
-        gcode = getattr(self.toolchanger, "_on_tool_drop_gcode", None)
-        if gcode:
-            return gcode
-        if self.toolchanger._ktc is not None:
-            gcode = getattr(self.toolchanger._ktc, "_on_tool_drop_gcode", None)
-            if gcode:
-                return gcode
-        return "PAUSE"
+        return self._resolve_gcode_param("_on_tool_drop_gcode", tool=tool, default="PAUSE")
 
     def _get_mount_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
-        """Resolves mount gcode, prioritizing tool, then toolchanger, then top ktc object."""
-        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
-            gcode = getattr(tool, "_on_tool_mount_gcode", None)
-            if gcode:
-                return gcode
-        gcode = getattr(self.toolchanger, "_on_tool_mount_gcode", None)
-        if gcode:
-            return gcode
-        if self.toolchanger._ktc is not None:
-            gcode = getattr(self.toolchanger._ktc, "_on_tool_mount_gcode", None)
-            if gcode:
-                return gcode
-        return ""
+        return self._resolve_gcode_param("_on_tool_mount_gcode", tool=tool, default="")
 
     def _get_dismount_gcode(self, tool: typing.Optional["ktc_tool.KtcTool"] = None) -> str:
-        """Resolves dismount gcode, prioritizing tool, then toolchanger, then top ktc object."""
-        if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
-            gcode = getattr(tool, "_on_tool_dismount_gcode", None)
-            if gcode:
-                return gcode
-        gcode = getattr(self.toolchanger, "_on_tool_dismount_gcode", None)
-        if gcode:
-            return gcode
-        if self.toolchanger._ktc is not None:
-            gcode = getattr(self.toolchanger._ktc, "_on_tool_dismount_gcode", None)
-            if gcode:
-                return gcode
-        return ""
+        return self._resolve_gcode_param("_on_tool_dismount_gcode", tool=tool, default="")
 
     def _is_printer_moving(self, eventtime: float) -> bool:
         # Check idle_timeout (standard Klipper printing check as in filament_switch_sensor)
@@ -580,16 +546,9 @@ class KtcSafety:
             )
             raise self.printer.command_error(msg)
 
-    def check_reboot_state(self):
-        """Called during _handle_ready. If a tool is physically sensed or tracked as attached on reboot, enter ERROR state."""
-        if not self.enabled or not getattr(self.toolchanger, "prevent_toolchange_on_reboot_attached", True):
-            return
-
-        # Give reactor a brief moment to process any pending async button state events from MCU
-        reactor = self.printer.get_reactor()
-        reactor.pause(reactor.monotonic() + 0.1)
-
-        # 1. Resolve selected_tool FIRST from toolchanger, ktc, or persistent storage
+    def _resolve_tool_from_state_or_sensor(self) -> typing.Tuple[typing.Optional["ktc_tool.KtcTool"], typing.Optional[bool]]:
+        """Resolves tool identity from toolchanger state, persistent state, or active physical sensor.
+        Returns a tuple of (resolved_tool, is_present)."""
         tool = self.toolchanger.selected_tool
         if tool in self.toolchanger.INVALID_TOOLS or tool is None:
             persisted_name = str.lower(
@@ -620,15 +579,26 @@ class KtcSafety:
         if (tool in self.toolchanger.INVALID_TOOLS or tool is None) and self.toolchanger._ktc:
             tool = self.toolchanger._ktc.active_tool
 
-        # 2. Query sensor AFTER tool identity is known
         is_present = self.query_tool_present(tool)
 
-        # 3. If tool was unknown/none but a physical sensor is triggered, find which tool it is
         if is_present is True and (tool in self.toolchanger.INVALID_TOOLS or tool is None):
             detected_tool = self.get_physically_attached_tool()
             if detected_tool:
                 tool = detected_tool
                 self.toolchanger.selected_tool = tool
+
+        return tool, is_present
+
+    def check_reboot_state(self):
+        """Called during _handle_ready. If a tool is physically sensed or tracked as attached on reboot, enter ERROR state."""
+        if not self.enabled or not getattr(self.toolchanger, "prevent_toolchange_on_reboot_attached", True):
+            return
+
+        # Give reactor a brief moment to process any pending async button state events from MCU
+        reactor = self.printer.get_reactor()
+        reactor.pause(reactor.monotonic() + 0.1)
+
+        tool, is_present = self._resolve_tool_from_state_or_sensor()
 
         # Determine if tool is attached:
         # 1. Physical sensor confirms tool is present (is_present is True)
@@ -757,40 +727,7 @@ class KtcSafety:
         reactor = self.printer.get_reactor()
         reactor.pause(reactor.monotonic() + 0.05)
 
-        # 1. If selected_tool is unknown, try to restore from persistent storage FIRST
-        if self.toolchanger.selected_tool in self.toolchanger.INVALID_TOOLS:
-            persisted_name = str.lower(
-                self.toolchanger.persistent_state.get(
-                    "selected_tool", self.toolchanger.TOOL_UNKNOWN.name
-                )
-            )
-            if persisted_name not in (
-                self.toolchanger.TOOL_NONE.name.lower(),
-                self.toolchanger.TOOL_UNKNOWN.name.lower(),
-            ):
-                matched = None
-                for t_name, t_obj in self.toolchanger.tools.items():
-                    if t_name.lower() == persisted_name:
-                        matched = t_obj
-                        break
-                if matched is None and getattr(self.toolchanger, "_ktc", None):
-                    for t_name, t_obj in self.toolchanger._ktc.all_tools.items():
-                        if t_name.lower() == persisted_name and getattr(t_obj, "toolchanger", None) == self.toolchanger:
-                            matched = t_obj
-                            break
-                if matched:
-                    self.toolchanger.selected_tool = matched
-            elif persisted_name == self.toolchanger.TOOL_NONE.name.lower():
-                self.toolchanger.selected_tool = self.toolchanger.TOOL_NONE
-
-        # 2. Query physical sensor with the resolved tool
-        is_present = self.query_tool_present(self.toolchanger.selected_tool)
-
-        # 3. If tool was unknown but physical sensor says attached, identify the tool
-        if is_present is True and self.toolchanger.selected_tool in self.toolchanger.INVALID_TOOLS:
-            detected_tool = self.get_physically_attached_tool()
-            if detected_tool:
-                self.toolchanger.selected_tool = detected_tool
+        tool, is_present = self._resolve_tool_from_state_or_sensor()
 
         # Determine if tool is attached:
         # True: physical sensor says attached
