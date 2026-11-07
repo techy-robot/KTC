@@ -54,7 +54,7 @@ class KtcSwitchSensor:
         self.state = bool(state)
         self.event_count += 1
         self.last_eventtime = eventtime
-        logging.info(
+        logging.debug(
             "KtcSwitchSensor [%s] event #%d: state=%s",
             self.pin_name,
             self.event_count,
@@ -634,8 +634,10 @@ class KtcSafety:
                 "Toolchanger locked in ERROR state to prevent unexpected tool changes. "
                 "Run KTC_SAFETY_UNLOCK to proceed."
             )
-            if self.toolchanger.log and getattr(self.toolchanger.log, "_ktc_logger", None):
-                self.toolchanger.log._ktc_logger.info(msg)
+            if self.toolchanger.log:
+                self.toolchanger.log.always(msg)
+            else:
+                self.printer.lookup_object("gcode").respond_info(msg)
 
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             if tool and tool not in self.toolchanger.INVALID_TOOLS:
@@ -657,8 +659,10 @@ class KtcSafety:
                 f"but physical sensor indicates tool is NOT attached on '{self.toolchanger.name}'! "
                 "Toolchanger locked in ERROR state. Re-attach tool and run KTC_SAFETY_UNLOCK to proceed."
             )
-            if self.toolchanger.log and getattr(self.toolchanger.log, "_ktc_logger", None):
-                self.toolchanger.log._ktc_logger.info(msg)
+            if self.toolchanger.log:
+                self.toolchanger.log.always(msg)
+            else:
+                self.printer.lookup_object("gcode").respond_info(msg)
 
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
