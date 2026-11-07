@@ -963,7 +963,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         return status
 
     def confirm_ready_for_toolchange(self, tool: KtcBaseToolClass):
-        def _printer_is_homed_for_toolchange(self, required_axes: str = ""):
+        def _printer_is_homed_for_toolchange(required_axes: str = ""):
             # If no axes are required, then return True.
             if required_axes == "":
                 return True
@@ -978,21 +978,26 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             return False
 
         if tool in self.INVALID_TOOLS:
-            raise ValueError("Tool is TOOL_NONE or TOOL_UNKNOWN")
-        if self.state == self.StateType.ERROR:
-            raise ValueError("KTC is in error state")
-        if tool.state == tool.StateType.ERROR:
-            raise ValueError("Tool is in error state")
+            raise self.printer.command_error("Tool is TOOL_NONE or TOOL_UNKNOWN")
         if tool.toolchanger.state == tool.toolchanger.StateType.ERROR:
             raise self.printer.command_error(
-                f"Toolchanger {tool.toolchanger.name} is in ERROR state. "
+                f"Toolchanger '{tool.toolchanger.name}' is in ERROR state. "
+                "Run KTC_SAFETY_UNLOCK or inspect hardware before toolchanging."
+            )
+        if self.state == self.StateType.ERROR:
+            raise self.printer.command_error(
+                "KTC is in ERROR state. "
+                "Run KTC_SAFETY_UNLOCK or inspect hardware before toolchanging."
+            )
+        if tool.state == tool.StateType.ERROR:
+            raise self.printer.command_error(
+                f"Tool '{tool.name}' is in ERROR state. "
                 "Run KTC_SAFETY_UNLOCK or inspect hardware before toolchanging."
             )
         if not _printer_is_homed_for_toolchange(tool.requires_axis_homed):
-            raise ValueError(
-                "Printer is not homed for toolchange"
-                + "Required axis %s not homed for ktc_tool %s."
-                % (tool.requires_axis_homed, tool.name)
+            raise self.printer.command_error(
+                f"Printer is not homed for toolchange: "
+                f"Required axis '{tool.requires_axis_homed}' not homed for ktc_tool '{tool.name}'."
             )
 
     def get_tool_by_name(self, tool_name: str) -> typing.Optional["ktc_tool.KtcTool"]:

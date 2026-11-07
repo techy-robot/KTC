@@ -290,7 +290,13 @@ class KtcSafety:
 
                 self._mounted_by_machine = False
 
-                msg = f"KTC SAFETY: Tool '{tool_name}' manually dismounted from '{self.toolchanger.name}'."
+                if tc_state == self.toolchanger.StateType.ERROR:
+                    msg = (
+                        f"KTC SAFETY: Tool '{tool_name}' manually dismounted from '{self.toolchanger.name}'. "
+                        "Safety lock remains active: run KTC_SAFETY_UNLOCK to resume."
+                    )
+                else:
+                    msg = f"KTC SAFETY: Tool '{tool_name}' manually dismounted from '{self.toolchanger.name}'."
                 if self.toolchanger.log:
                     self.toolchanger.log.always(msg)
                 else:
@@ -771,6 +777,13 @@ class KtcSafety:
             )
 
         self._mounted_by_machine = False
+
+        # Reset ERROR state on tools belonging to this toolchanger
+        for t in self.toolchanger.tools.values():
+            if tool_attached and t == self.toolchanger.selected_tool:
+                t.state = self.toolchanger.StateType.ENGAGED
+            elif t.state == self.toolchanger.StateType.ERROR:
+                t.state = self.toolchanger.StateType.READY
 
         # Clear error on top ktc object if it was in error
         if self.toolchanger._ktc and self.toolchanger._ktc.state == self.toolchanger.StateType.ERROR:
