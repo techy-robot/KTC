@@ -995,6 +995,32 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                 % (tool.requires_axis_homed, tool.name)
             )
 
+    def get_tool_by_name(self, tool_name: str) -> typing.Optional["ktc_tool.KtcTool"]:
+        """Looks up a tool by name case-insensitively."""
+        if not tool_name:
+            return None
+        tool = self.all_tools.get(tool_name, None)
+        if tool is not None:
+            return tool
+        tool_name_lower = tool_name.lower()
+        for name, obj in self.all_tools.items():
+            if name.lower() == tool_name_lower:
+                return obj
+        return None
+
+    def get_toolchanger_by_name(self, tc_name: str) -> typing.Optional["ktc_toolchanger.KtcToolchanger"]:
+        """Looks up a toolchanger by name case-insensitively."""
+        if not tc_name:
+            return None
+        tc = self.all_toolchangers.get(tc_name, None)
+        if tc is not None:
+            return tc
+        tc_name_lower = tc_name.lower()
+        for name, obj in self.all_toolchangers.items():
+            if name.lower() == tc_name_lower:
+                return obj
+        return None
+
     def get_tool_from_gcmd(
         self, gcmd: "gcode.GCodeCommand", allow_invalid_active_tool: bool = True,
     explicit: bool = False) -> "ktc_tool.KtcTool":
@@ -1004,12 +1030,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         tool_name: str = gcmd.get("TOOL", None)  # type: ignore
         tool_nr: int = gcmd.get_int("T", self.TOOL_NUMBERLESS_N)  # type: ignore
         if tool_name:
-            tool = self.all_tools.get(tool_name, None)
-            if not tool:
-                for t_name, t_obj in self.all_tools.items():
-                    if t_name.lower() == tool_name.lower():
-                        tool = t_obj
-                        break
+            tool = self.get_tool_by_name(tool_name)
             if not tool:
                 raise gcmd.error("Tool %s not found" % (tool_name))
         elif tool_nr != self.TOOL_NUMBERLESS_N:
@@ -1039,10 +1060,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                 "ktc_toolchanger " + toolchanger_name, None
             )
             if not toolchanger:
-                for tc_name, tc_obj in self.all_toolchangers.items():
-                    if tc_name.lower() == toolchanger_name.lower():
-                        toolchanger = tc_obj
-                        break
+                toolchanger = self.get_toolchanger_by_name(toolchanger_name)
             if not toolchanger:
                 raise gcmd.error("Toolchanger %s not found" % (toolchanger_name))
         elif explicit:
@@ -1156,7 +1174,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         try:
             tc_name = gcmd.get("TOOLCHANGER", None)
             if tc_name:
-                tc = self.all_toolchangers.get(tc_name, None)
+                tc = self.get_toolchanger_by_name(tc_name)
                 if not tc:
                     raise gcmd.error(f"Toolchanger {tc_name} not found")
             else:
@@ -1180,7 +1198,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         try:
             tc_name = gcmd.get("TOOLCHANGER", None)
             if tc_name:
-                tc = self.all_toolchangers.get(tc_name, None)
+                tc = self.get_toolchanger_by_name(tc_name)
                 if not tc:
                     raise gcmd.error(f"Toolchanger {tc_name} not found")
                 toolchangers = [tc]
@@ -1205,7 +1223,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         try:
             tc_name = gcmd.get("TOOLCHANGER", None)
             if tc_name:
-                tc = self.all_toolchangers.get(tc_name, None)
+                tc = self.get_toolchanger_by_name(tc_name)
                 if not tc:
                     raise gcmd.error(f"Toolchanger {tc_name} not found")
                 toolchangers = [tc]
@@ -1230,12 +1248,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         try:
             tc_name = gcmd.get("TOOLCHANGER", None)
             if tc_name:
-                tc = self.all_toolchangers.get(tc_name, None)
-                if not tc:
-                    for name, obj in self.all_toolchangers.items():
-                        if name.lower() == tc_name.lower():
-                            tc = obj
-                            break
+                tc = self.get_toolchanger_by_name(tc_name)
                 if not tc:
                     raise gcmd.error(f"Toolchanger {tc_name} not found")
             else:
