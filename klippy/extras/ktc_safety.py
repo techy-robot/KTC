@@ -85,6 +85,10 @@ class KtcSafety:
         self._last_dismount_eventtime: float = 0.0
         self._mounted_by_machine: bool = False
         self._in_toolchange: bool = False
+        self._reboot_timer = None
+        self._pending_reboot_msg: typing.Optional[str] = None
+        self._pending_reboot_gcode: typing.Optional[str] = None
+        self._pending_reboot_tool: typing.Optional[typing.Any] = None
 
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
@@ -636,6 +640,18 @@ class KtcSafety:
             if tool is not None and tool not in self.toolchanger.INVALID_TOOLS:
                 is_attached = True
 
+        delay = (
+            getattr(tool, "on_reboot_tool_attached_delay", None)
+            if tool and tool not in self.toolchanger.INVALID_TOOLS
+            else None
+        )
+        if delay is None:
+            delay = getattr(self.toolchanger, "on_reboot_tool_attached_delay", None)
+        if delay is None and self.toolchanger._ktc:
+            delay = getattr(self.toolchanger._ktc, "on_reboot_tool_attached_delay", None)
+        if delay is None:
+            delay = 2.0
+
         if is_attached:
             tool_name = (
                 tool.name
@@ -648,10 +664,8 @@ class KtcSafety:
                 "Toolchanger locked in ERROR state to prevent unexpected tool changes. "
                 "Run KTC_SAFETY_UNLOCK to proceed."
             )
-            if self.toolchanger.log:
-                self.toolchanger.log.always(msg)
-            else:
-                self.printer.lookup_object("gcode").respond_info(msg)
+            if self.toolchanger.log and getattr(self.toolchanger.log, "_ktc_logger", None):
+                self.toolchanger.log._ktc_logger.info(msg)
 
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             if tool and tool not in self.toolchanger.INVALID_TOOLS:
@@ -665,10 +679,7 @@ class KtcSafety:
                 or (getattr(self.toolchanger._ktc, "_on_reboot_tool_attached_gcode", None) if self.toolchanger._ktc else None)
                 or ""
             )
-            self._run_gcode_callback(
-                reboot_gcode,
-                tool=tool,
-            )
+            self._schedule_reboot_action(msg, reboot_gcode, tool, delay)
         elif is_present is False and tool not in self.toolchanger.INVALID_TOOLS and tool is not None:
             # Active tool was tracked in persistent state, but physically NOT attached on reboot!
             msg = (
@@ -676,22 +687,72 @@ class KtcSafety:
                 f"but physical sensor indicates tool is NOT attached on '{self.toolchanger.name}'! "
                 "Toolchanger locked in ERROR state. Re-attach tool and run KTC_SAFETY_UNLOCK to proceed."
             )
-            if self.toolchanger.log:
-                self.toolchanger.log.always(msg)
-            else:
-                self.printer.lookup_object("gcode").respond_info(msg)
+            if self.toolchanger.log and getattr(self.toolchanger.log, "_ktc_logger", None):
+                self.toolchanger.log._ktc_logger.info(msg)
 
             self.toolchanger.state = self.toolchanger.StateType.ERROR
             tool.state = tool.StateType.ERROR
             if self.toolchanger._ktc:
                 self.toolchanger._ktc.active_tool = tool
-            self._run_gcode_callback(
-                self._get_error_gcode(tool=tool),
-                tool=tool,
-            )
+            self._schedule_reboot_action(msg, self._get_error_gcode(tool=tool), tool, delay)
+
+    def _schedule_reboot_action(
+        self,
+        msg: str,
+        gcode: str,
+        tool: typing.Optional["ktc_tool.KtcTool"],
+        delay: float,
+    ):
+        if delay <= 0:
+            if self.toolchanger.log:
+                self.toolchanger.log.always(msg)
+            else:
+                self.printer.lookup_object("gcode").respond_info(msg)
+            self._run_gcode_callback(gcode, tool=tool)
+            return
+
+        reactor = self.printer.get_reactor()
+        if self._reboot_timer is not None:
+            reactor.update_timer(self._reboot_timer, reactor.NEVER)
+            self._reboot_timer = None
+
+        self._pending_reboot_msg = msg
+        self._pending_reboot_gcode = gcode
+        self._pending_reboot_tool = tool
+
+        self._reboot_timer = reactor.register_timer(
+            self._handle_reboot_attached_timer,
+            reactor.monotonic() + delay,
+        )
+
+    def _handle_reboot_attached_timer(self, eventtime):
+        self._reboot_timer = None
+        if self.toolchanger.state == self.toolchanger.StateType.ERROR:
+            if self._pending_reboot_msg:
+                if self.toolchanger.log:
+                    self.toolchanger.log.always(self._pending_reboot_msg)
+                else:
+                    self.printer.lookup_object("gcode").respond_info(self._pending_reboot_msg)
+            if self._pending_reboot_gcode:
+                self._run_gcode_callback(
+                    self._pending_reboot_gcode,
+                    tool=self._pending_reboot_tool,
+                )
+        self._pending_reboot_msg = None
+        self._pending_reboot_gcode = None
+        self._pending_reboot_tool = None
+        return self.printer.get_reactor().NEVER
 
     def unlock(self):
         """Clears ERROR state and synchronizes tool state based on sensor query or prior state."""
+        if self._reboot_timer is not None:
+            reactor = self.printer.get_reactor()
+            reactor.update_timer(self._reboot_timer, reactor.NEVER)
+            self._reboot_timer = None
+            self._pending_reboot_msg = None
+            self._pending_reboot_gcode = None
+            self._pending_reboot_tool = None
+
         # Give reactor a brief moment to process any pending async button state events
         reactor = self.printer.get_reactor()
         reactor.pause(reactor.monotonic() + 0.05)

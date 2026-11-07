@@ -182,6 +182,12 @@ When not specified they will be initialized with the default value as below.
 #   G-code macro or command to execute when a tool is sensed attached on reboot.
 #   Provides 'myself', 'toolchanger', 'ktc', and 'STATE_TYPE'.
 
+#on_reboot_tool_attached_delay = 2.0
+#   Delay in seconds before executing on_reboot_tool_attached_gcode and printing
+#   the reboot safety warning to the console. Default is 2.0 seconds, allowing
+#   Moonraker and web clients (Mainsail/Fluidd) time to connect and render console
+#   messages and action prompts/dialogs. Set to 0 to run immediately.
+
 #on_tool_change_error_gcode = PAUSE
 #   G-code macro or command to execute if pickup or dropoff switch verification fails.
 #   Can also be named failure_gcode or on_failure_gcode. Default is PAUSE.
