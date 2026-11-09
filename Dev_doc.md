@@ -1,7 +1,7 @@
 # Development doc for KTC
 
 ## Setting up enviroment.
-It is assumed KTC and Klipper folders are in same directory for typing to work.
+KTC includes PEP 484 type stub interfaces (`typings/klippy/*.pyi`), so external Klipper source is NOT required for typing or IDE autocompletion. Standard Python IDE type checkers (Pyright, Pylance, Mypy) work out of the box with `stubPath: "typings"`. Run tests with `python3 run_tests.py`.
 
 ## Why so many classes?
 > Using inherited classes from Ktc code can use the BaseClass for typechecks and not cross import.

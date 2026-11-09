@@ -1,0 +1,13 @@
+# Type annotations stub for Klippy interface
+# This file may be distributed under the terms of the GNU GPLv3 license.
+
+from typing import Any, Dict
+
+class Fan:
+    def set_speed_from_command(self, speed: float) -> None: ...
+
+class PrinterFanGeneric:
+    fan: Fan
+    def __init__(self, config: Any) -> None: ...
+    def get_status(self, eventtime: float = ...) -> Dict[str, Any]: ...
+    def set_speed(self, speed: float) -> None: ...

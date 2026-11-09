@@ -16,8 +16,11 @@ import typing
 
 # Only import these modules in Dev environment. Consult Dev_doc.md for more info.
 if typing.TYPE_CHECKING:
-    from ...klipper.klippy import configfile, gcode
-    from ...klipper.klippy import klippy
+    try:
+        from klippy import configfile, gcode, klippy
+    except (ImportError, ValueError):
+        from ...klipper.klippy import configfile, gcode
+        from ...klipper.klippy import klippy
     from . import ktc_toolchanger, ktc_tool, ktc_persisting, ktc, ktc_heater
 
 LINE_SEPARATOR = "\n--------------------------------------------------------\n"

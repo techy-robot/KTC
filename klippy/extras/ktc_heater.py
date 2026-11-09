@@ -9,8 +9,12 @@ from enum import IntEnum, unique
 
 # Only import these modules in Dev environment. Consult Dev_doc.md for more info.
 if typing.TYPE_CHECKING:
-    from ...klipper.klippy import configfile, gcode, klippy, reactor
-    from ...klipper.klippy.extras import heaters as klippy_heaters
+    try:
+        from klippy import configfile, gcode, klippy, reactor
+        from klippy.extras import heaters as klippy_heaters
+    except (ImportError, ValueError):
+        from ...klipper.klippy import configfile, gcode, klippy, reactor
+        from ...klipper.klippy.extras import heaters as klippy_heaters
 
     # from ...klipper.klippy.extras import gcode_macro as klippy_gcode_macro
     from . import ktc_log, ktc_toolchanger, ktc_tool, ktc

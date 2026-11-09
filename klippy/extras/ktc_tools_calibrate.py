@@ -21,7 +21,10 @@ from .ktc_base import (
 )
 
 if typing.TYPE_CHECKING:
-    from ...klipper.klippy import configfile, gcode
+    try:
+        from klippy import configfile, gcode
+    except (ImportError, ValueError):
+        from ...klipper.klippy import configfile, gcode
     from . import ktc, ktc_log, ktc_tool, ktc_persisting
 
 

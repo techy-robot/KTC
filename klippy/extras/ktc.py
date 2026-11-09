@@ -19,12 +19,18 @@ from .ktc_heater import HeaterStateType
 
 # Only import these modules in Dev environment. Consult Dev_doc.md for more info.
 if typing.TYPE_CHECKING:
-    from ...klipper.klippy import configfile, gcode
-    from ...klipper.klippy.extras import (
-        heaters as klippy_heaters,
-        # gcode_move as klippy_gcode_move,
-        fan_generic as klippy_fan_generic,
-    )
+    try:
+        from klippy import configfile, gcode
+        from klippy.extras import (
+            heaters as klippy_heaters,
+            fan_generic as klippy_fan_generic,
+        )
+    except (ImportError, ValueError):
+        from ...klipper.klippy import configfile, gcode
+        from ...klipper.klippy.extras import (
+            heaters as klippy_heaters,
+            fan_generic as klippy_fan_generic,
+        )
     from . import ktc_log, ktc_persisting, ktc_toolchanger, ktc_tool, ktc_heater, ktc_tools_calibrate
 
 # Constants for the restore_axis_on_toolchange variable.

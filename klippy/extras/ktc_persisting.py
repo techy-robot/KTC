@@ -19,9 +19,12 @@ import os.path, ast, configparser, typing
 
 # Only import these modules in Dev environment. Consult Dev_doc.md for more info.
 if typing.TYPE_CHECKING:
-    from ...klipper.klippy import configfile
-    from ...klipper.klippy import klippy, reactor
-    from. import ktc_log
+    try:
+        from klippy import configfile, klippy, reactor
+    except (ImportError, ValueError):
+        from ...klipper.klippy import configfile
+        from ...klipper.klippy import klippy, reactor
+    from . import ktc_log
 
 # Constant values moved here to avoid circular imports
 KTC_SAVE_VARIABLES_FILENAME = "~/ktc_variables.cfg"

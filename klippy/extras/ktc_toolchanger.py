@@ -15,8 +15,12 @@ from .ktc_safety import KtcSafety # pylint: disable=relative-beyond-top-level
 
 # Only import these modules in Dev environment. Consult Dev_doc.md for more info.
 if typing.TYPE_CHECKING:
-    from ...klipper.klippy import configfile
-    from ...klipper.klippy.extras import gcode_macro as klippy_gcode_macro
+    try:
+        from klippy import configfile
+        from klippy.extras import gcode_macro as klippy_gcode_macro
+    except (ImportError, ValueError):
+        from ...klipper.klippy import configfile
+        from ...klipper.klippy.extras import gcode_macro as klippy_gcode_macro
     from . import ktc_tool
 
 @typing.final

@@ -1,0 +1,26 @@
+# Type annotations stub for Klippy interface
+# This file may be distributed under the terms of the GNU GPLv3 license.
+
+from typing import Callable, Optional
+
+NOW: float
+NEVER: float
+
+class TimerHandle:
+    waketime: float
+
+class Reactor:
+    NOW: float
+    NEVER: float
+    def __init__(self) -> None: ...
+    def monotonic(self) -> float: ...
+    def get_monotonic(self) -> float: ...
+    def register_timer(
+        self,
+        callback: Callable[[float], Optional[float]],
+        waketime: float = ...,
+    ) -> TimerHandle: ...
+    def unregister_timer(self, handle: TimerHandle) -> None: ...
+    def update_timer(self, handle: TimerHandle, waketime: float) -> None: ...
+    def register_callback(self, callback: Callable[[float], None]) -> None: ...
+    def pause(self, waketime: float) -> None: ...

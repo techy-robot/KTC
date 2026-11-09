@@ -13,8 +13,12 @@ import logging
 import typing
 
 if typing.TYPE_CHECKING:
-    from ...klipper.klippy import configfile
-    from ...klipper.klippy.extras import gcode_macro as klippy_gcode_macro
+    try:
+        from klippy import configfile
+        from klippy.extras import gcode_macro as klippy_gcode_macro
+    except (ImportError, ValueError):
+        from ...klipper.klippy import configfile
+        from ...klipper.klippy.extras import gcode_macro as klippy_gcode_macro
     from . import ktc, ktc_log, ktc_tool, ktc_toolchanger, ktc_base
 
 
