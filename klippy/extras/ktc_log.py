@@ -90,6 +90,7 @@ class KtcLog:
             self.debug("Forced rollover of KTC log file done.")
 
         # Statistics variables
+        self._ktc = None
         self.changer_stats: typing.Dict[str, ChangerStatisticsClass] = {}
         self.tool_stats: typing.Dict[str, ToolStatisticsClass] = {}
         self.print_changer_stats: typing.Dict[str, ChangerStatisticsClass] = {}
@@ -518,7 +519,7 @@ class KtcLog:
         if t.selects_started > 0 or not since_print_start:
             result += "\n%s selects completed(%.1f%%)" % (
                 KtcLog.bignumber_to_human_string(t.selects_completed),
-                (t.selects_completed / t.selects_started * 100),
+                (safe_division(t.selects_completed, t.selects_started) * 100),
             )
             result += " in %s." % (KtcLog.seconds_to_human_string(t.time_spent_selecting))
             result += " Avg. %s." % (
@@ -532,7 +533,7 @@ class KtcLog:
         if t.deselects_started > 0:
             result += "\n%s deselects completed(%.1f%%)" % (
                 KtcLog.bignumber_to_human_string(t.deselects_completed),
-                (t.deselects_completed / t.deselects_started * 100),
+                (safe_division(t.deselects_completed, t.deselects_started) * 100),
             )
             result += " in %s." % (KtcLog.seconds_to_human_string(t.time_spent_deselecting))
             result += " Avg. %s." % (
@@ -616,6 +617,8 @@ class KtcLog:
             f"track_heater_active_start: Tool: {tool.name}")
 
     def track_heater_active_end_for_tools_having_heater(self, heater: 'ktc_heater.KtcHeater'):
+        if self._ktc is None:
+            return
         for tool in self._ktc.all_tools.values():
             if tool not in self._ktc.INVALID_TOOLS:
                 # self.debug(
@@ -654,6 +657,8 @@ class KtcLog:
     def track_heater_standby_start_for_standby_tools_having_heater(
         self, heater: 'ktc_heater.KtcHeater'):
         '''Called by the HeaterTimer when the heater is set to standby.'''
+        if self._ktc is None:
+            return
         for tool in self._ktc.all_tools.values():
             if tool not in self._ktc.INVALID_TOOLS:
                 # self.debug(
@@ -676,6 +681,8 @@ class KtcLog:
 
     def track_heater_end_for_tools_having_heater(self, heater: 'ktc_heater.KtcHeater'):
         '''Called by the HeaterTimer when the heater is set to off.'''
+        if self._ktc is None:
+            return
         for tool in self._ktc.all_tools.values():
             if tool not in self._ktc.INVALID_TOOLS:
                 if self.tool_stats[tool.name].start_time_heater_standby:
@@ -806,7 +813,7 @@ class KtcLog:
     def cmd_KTC_SET_LOG_LEVEL(self, gcmd):
         self.log_level = gcmd.get_int("LEVEL", self.log_level, minval=0, maxval=4)
         self.logfile_level = gcmd.get_int(
-            "LOGFILE", self.logfile_level, minval=0, maxval=4
+            "LOGFILE", self.logfile_level, minval=-1, maxval=4
         )
 
     cmd_KTC_LOG_ALWAYS_help = "Log allways MSG"
@@ -870,6 +877,7 @@ class KtcQueueListener(logging.handlers.TimedRotatingFileHandler):
     def stop(self):
         self.bg_queue.put_nowait(None)
         self.bg_thread.join()
+        self.close()
 
 
 ####################################
