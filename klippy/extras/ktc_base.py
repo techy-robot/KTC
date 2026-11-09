@@ -213,10 +213,10 @@ class KtcBaseClass:
                         if init == "init_global_offset" and self.__class__.__name__ != "Ktc":
                             raise ValueError(
                                 "init_global_offset is only valid for the topmost KTC object.")
-                        elif init != "init_global_offset" or init == "init_offset":
+                        elif init != "init_global_offset" and init != "init_offset":
                             raise ValueError(
                                 f"Invalid initializing option name {init} "
-                                + "for {self.config.get_name()}.")
+                                + f"for {self.config.get_name()}.")
                         v = typing.cast(str, config.get(init)).replace(" ", "")
                         if v:
                             vl = [float(x) for x in v.split(",")]
