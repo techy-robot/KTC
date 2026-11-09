@@ -268,7 +268,9 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         """
         tool: "ktc_tool.KtcTool"
         # For each tool that is defined in the config file:
-        for tool in dict(self.printer.lookup_objects("ktc_tool")).values():
+        for name, tool in self.printer.lookup_objects("ktc_tool"):
+            if name.startswith("ktc_toolchanger"):
+                continue
             if tool.toolchanger is None:
                 tool.toolchanger = self.default_toolchanger
             tool.toolchanger.tools[tool.name] = tool
