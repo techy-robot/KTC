@@ -282,15 +282,14 @@ class KtcBaseClass:
             for attr, _ in PARAMS_TO_INHERIT.items():
                 if getattr(self, attr) is None:
                     setattr(self, attr, getattr(parent, attr))
+            for v in parent.params: # type: ignore
+                if v not in self.params:
+                    self.params[v] = parent.params[v]   # type: ignore
         else:
             # For top ktc object initialize unused parameters.
             for attr, default_value in PARAMS_TO_INHERIT.items():
                 if getattr(self, attr) is None:
                     setattr(self, attr, default_value)
-
-            for v in parent.params: # type: ignore
-                if v not in self.params:
-                    self.params[v] = parent.params[v]   # type: ignore
 
     @staticmethod
     def get_params_dict_from_config(config: 'configfile.ConfigWrapper'):
