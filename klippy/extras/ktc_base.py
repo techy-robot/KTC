@@ -187,7 +187,7 @@ class KtcBaseClass:
                 raise config.error(errmsg)
             else:
                 if fan[1] is not None:
-                    fan[1] = fan[1]
+                    fan[1] = float(fan[1])
             if fan[1] < 0 or fan[1] > 1:
                 raise config.error(errmsg)
             if len(fan) != 2:
