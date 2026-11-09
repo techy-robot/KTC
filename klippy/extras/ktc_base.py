@@ -488,9 +488,9 @@ class KtcBaseToolClass(KtcBaseClass):
         if self._ktc.propagate_state:
             self.toolchanger.state = value
 
-        if value == self.StateType.SELECTED and self._ktc.propagate_state:
+        if self.state == self.StateType.SELECTED and self._ktc.propagate_state:
             self.toolchanger.selected_tool = self   # type: ignore # Child class
-        elif value == self.StateType.ACTIVE and self._ktc.propagate_state:
+        elif self.state == self.StateType.ACTIVE and self._ktc.propagate_state:
             self.toolchanger.selected_tool = self   # type: ignore # Child class
             self._ktc.active_tool = self
 
