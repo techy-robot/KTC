@@ -421,7 +421,7 @@ class KtcBaseClass:
 
     def run_with_profile(self, method, *args, **kwargs):
         '''Run a profile on a method. Used for debugging.'''
-        if not self.run_with_profile:
+        if not getattr(self, "debug_with_profile", False):
             method(*args, **kwargs)
             return
         pr = cProfile.Profile()
