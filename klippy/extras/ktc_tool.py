@@ -86,7 +86,7 @@ class KtcTool(KtcBaseToolClass, KtcConstantsClass):
 
     @KtcBaseToolClass.state.setter
     def state(self, value):
-        super(KtcBaseToolClass, type(self)).state.fset(self, value) # type: ignore
+        super(KtcTool, type(self)).state.fset(self, value) # type: ignore
 
     def configure_inherited_params(self):
         # If this is TOOL_NONE or TOOL_UNKNOWN.
