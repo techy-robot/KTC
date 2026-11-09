@@ -2,6 +2,7 @@
 # Tool module, for each tool.
 #
 # Copyright (C) 2024 Andrei Ignat <andrei@ignat.se>
+# Copyright (C) 2026 Asher Edwards <asher@fiatnovum.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 

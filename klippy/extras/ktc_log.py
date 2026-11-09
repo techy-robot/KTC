@@ -2,6 +2,7 @@
 # Log and statistics module
 #
 # Copyright (C) 2024 Andrei Ignat <andrei@ignat.se>
+# Copyright (C) 2026 Asher Edwards <asher@fiatnovum.com>
 #
 # Based on and inspired by ERCF-Software-V3      Copyright (C) 2021  moggieuk#6538 (discord)
 #

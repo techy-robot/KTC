@@ -5,6 +5,10 @@
 # - Further adapted in https://github.com/viesturz/klipper-toolchanger/blob/main/klipper/extras/tools_calibrate.py
 # - Originally sourced from https://github.com/ben5459/Klipper_ToolChanger/blob/master/probe_multi_axis.py, includes code by Kevin O'Connor <kevin@koconnor.net> and Martin Hierholzer <martin@hierholzer.info>
 # - Ben5459 forked https://github.com/TypQxQ/Klipper_ToolChanger (KTCC V1)
+#
+# Copyright (C) 2026 Asher Edwards <asher@fiatnovum.com>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 
 from __future__ import annotations
 import collections
