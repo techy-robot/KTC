@@ -39,7 +39,7 @@ class KtcPersisting:
             config, "ktc_log"
         ))
 
-        self.filename = os.path.expanduser(KTC_SAVE_VARIABLES_FILENAME)
+        self.filename = os.path.expanduser(config.get("filename", KTC_SAVE_VARIABLES_FILENAME))
 
         self.content = {}
         self.ready_to_save = False
