@@ -505,6 +505,12 @@ class Heater:
     def check_busy(self, eventtime: float = 0.0) -> bool:
         return abs(self.current_temp - self.target_temp) > 1.0
 
+    def get_status(self, eventtime: float = 0.0) -> Dict[str, Any]:
+        return {
+            "temperature": self.current_temp,
+            "target": self.target_temp,
+        }
+
 
 class PrinterHeaters:
     """Mock PrinterHeaters subsystem."""
@@ -512,6 +518,10 @@ class PrinterHeaters:
     def __init__(self, printer: Any) -> None:
         self.printer = printer
         self.heaters: Dict[str, Heater] = {}
+
+    @property
+    def available_heaters(self) -> List[str]:
+        return list(self.heaters.keys())
 
     def add_heater(self, name: str) -> Heater:
         h = Heater(self.printer, name)
@@ -882,7 +892,8 @@ class KtcTestHarness:
                 if has_heaters:
                     heater_name = f"extruder{i}" if i > 0 else "extruder"
                     t_dict["heater"] = heater_name
-                    self.printer.heaters.add_heater(heater_name)
+                    k_heater = self.printer.heaters.add_heater(heater_name)
+                    self.printer.add_object(heater_name, k_heater)
                     h_cfg = self.get_config_wrapper(f"ktc_heater {heater_name}")
                     h_obj = KtcHeater(h_cfg)
                     self.printer.add_object(f"ktc_heater {heater_name}", h_obj)
