@@ -58,6 +58,20 @@ class TestKtc(KtcTestCase):
         self.assertEqual(self.tool0.extruder.active_temp, 215.0)
         self.assertEqual(self.tool0.extruder.standby_temp, 150.0)
 
+        # Verify float values are accepted
+        self.harness.run_gcode("KTC_TOOL_SET_TEMPERATURE TOOL=0 STDB_TMP=150.5 ACTV_TMP=215.0")
+        self.assertEqual(self.tool0.extruder.active_temp, 215.0)
+        self.assertEqual(self.tool0.extruder.standby_temp, 150.5)
+
+    def test_temperature_wait_with_tolerance(self) -> None:
+        """Verify KTC_TEMPERATURE_WAIT_WITH_TOLERANCE accepts int and float tolerance."""
+        heater = self.harness.printer.heaters.lookup_heater("extruder")
+        heater.target_temp = 200.0
+        # Integer tolerance
+        self.harness.run_gcode("KTC_TEMPERATURE_WAIT_WITH_TOLERANCE TOOL=0 TOLERANCE=2")
+        # Float tolerance
+        self.harness.run_gcode("KTC_TEMPERATURE_WAIT_WITH_TOLERANCE TOOL=0 TOLERANCE=1.5")
+
     def test_heaters_pause_and_resume(self) -> None:
         """Verify pausing and resuming heaters via KTC_HEATERS_PAUSE and KTC_HEATERS_RESUME."""
         heater_obj = self.ktc.all_heaters["extruder"]

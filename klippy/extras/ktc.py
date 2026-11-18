@@ -638,8 +638,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         TOLERANCE=nnn Tolerance in degC. Defaults to 1*C.
         Wait will wait until heater is between set temperature +/- tolerance."""
         heater_names = []
-        tolerance = gcmd.get_int(
-            "TOLERANCE", DEFAULT_WAIT_FOR_TEMPERATURE_TOLERANCE, minval=0, maxval=9
+        tolerance = gcmd.get_float(
+            "TOLERANCE", DEFAULT_WAIT_FOR_TEMPERATURE_TOLERANCE, minval=0.0, maxval=9.0
         )
         var_heater = typing.cast(str, gcmd.get("HEATER", None))
         tool = self.get_tool_from_gcmd(gcmd, explicit=True)
@@ -688,7 +688,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         self, heater_name, tolerance
     ):  # pylint: disable=invalid-name
         curtime = self.printer.get_reactor().monotonic()
-        target_temp = int(
+        target_temp = float(
             self.printer.lookup_object(heater_name).get_status(curtime)["target"]
         )
 
@@ -741,8 +741,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
         try:
             tool = self.get_tool_from_gcmd(gcmd)
 
-            stdb_tmp = gcmd.get_int("STDB_TMP", None, minval=0)
-            actv_tmp = gcmd.get_int("ACTV_TMP", None, minval=0)
+            stdb_tmp = gcmd.get_float("STDB_TMP", None, minval=0.0)
+            actv_tmp = gcmd.get_float("ACTV_TMP", None, minval=0.0)
             chng_state = typing.cast(str, gcmd.get("CHNG_STATE", None))
             stdb_timeout = gcmd.get_float("STDB_TIMEOUT", None, minval=0)
             shtdwn_timeout = gcmd.get_float("SHTDWN_TIMEOUT", None, minval=0)
@@ -760,9 +760,9 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
             set_heater_cmd = {}
 
             if stdb_tmp is not None:
-                set_heater_cmd["heater_standby_temp"] = int(stdb_tmp)
+                set_heater_cmd["heater_standby_temp"] = float(stdb_tmp)
             if actv_tmp is not None:
-                set_heater_cmd["heater_active_temp"] = int(actv_tmp)
+                set_heater_cmd["heater_active_temp"] = float(actv_tmp)
             if stdb_timeout is not None:
                 set_heater_cmd["heater_active_to_standby_delay"] = max(stdb_timeout, 0.1)
             if shtdwn_timeout is not None:
