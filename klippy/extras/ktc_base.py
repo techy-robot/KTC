@@ -54,6 +54,7 @@ PARAMS_TO_INHERIT = {"_engage_gcode": "",
                      "verify_tool_pickup": True,
                      "verify_tool_dropoff": True,
                      "_on_tool_drop_gcode": "PAUSE",
+                     "event_delay": 0.25,
                      "_on_reboot_tool_attached_gcode": "",
                      "on_reboot_tool_attached_delay": 2.0,
                      "_on_tool_change_error_gcode": "PAUSE",
@@ -149,6 +150,7 @@ class KtcBaseClass:
         self.verify_tool_dropoff = config.getboolean(
             "verify_tool_dropoff", None)
         self._on_tool_drop_gcode = config.get("on_tool_drop_gcode", None)
+        self.event_delay = config.getfloat("event_delay", None, minval=0.0)
         self._on_reboot_tool_attached_gcode = config.get("on_reboot_tool_attached_gcode", None)
         self.on_reboot_tool_attached_delay = config.getfloat(
             "on_reboot_tool_attached_delay",

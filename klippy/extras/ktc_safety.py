@@ -93,6 +93,9 @@ class KtcSafety:
         self._pending_reboot_msg: typing.Optional[str] = None
         self._pending_reboot_gcode: typing.Optional[str] = None
         self._pending_reboot_tool: typing.Optional[typing.Any] = None
+        self._drop_timer = None
+        self._pending_drop_tool: typing.Optional[typing.Any] = None
+        self._pending_drop_reason: typing.Optional[str] = None
 
         # Register carriage sensor during __init__ before MCU connects and builds config
         pin = getattr(self.toolchanger, "tool_present_pin", None) or self.config.get("tool_present_pin", None)
@@ -104,8 +107,17 @@ class KtcSafety:
                 callback=self._handle_sensor_change,
             )
 
+    def _cancel_pending_drop(self):
+        if self._drop_timer is not None:
+            reactor = self.printer.get_reactor()
+            reactor.update_timer(self._drop_timer, reactor.NEVER)
+            self._drop_timer = None
+            self._pending_drop_tool = None
+            self._pending_drop_reason = None
+
     def begin_toolchange(self):
         self._in_toolchange = True
+        self._cancel_pending_drop()
 
     def end_toolchange(self):
         self._in_toolchange = False
@@ -124,6 +136,21 @@ class KtcSafety:
                     pin,
                     callback=self._handle_sensor_change,
                 )
+
+    def _resolve_event_delay(
+        self,
+        tool: typing.Optional["ktc_tool.KtcTool"] = None,
+    ) -> float:
+        """Resolves sensor event delay in seconds, defaulting to 0.25 (250ms)."""
+        for obj in (tool, self.toolchanger, getattr(self.toolchanger, "_ktc", None)):
+            if obj is not None and obj not in getattr(self.toolchanger, "INVALID_TOOLS", ()):
+                val = getattr(obj, "event_delay", None)
+                if val is not None:
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        pass
+        return 0.25
 
     def _resolve_gcode_param(
         self,
@@ -240,41 +267,26 @@ class KtcSafety:
                 if tool is not None and active_tool is not None and tool != active_tool:
                     return
 
-                # Debounce drop events by at least 1 second
-                if eventtime - self._last_drop_eventtime < 1.0:
-                    return
-                self._last_drop_eventtime = eventtime
-
                 tool_obj = active_tool if active_tool and active_tool not in self.toolchanger.INVALID_TOOLS else tool
-                tool_name = (
-                    tool_obj.name
-                    if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS
-                    else "unknown"
-                )
-
-                if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
-                    tool_obj.state = self.toolchanger.StateType.ERROR
-
-                self.toolchanger.state = self.toolchanger.StateType.ERROR
-                self._mounted_by_machine = False
-
                 reason = "during motion" if is_moving else "while mounted by machine"
-                msg = (
-                    f"KTC SAFETY ALERT: Tool drop detected on toolchanger '{self.toolchanger.name}' ({reason})! "
-                    f"Active tool '{tool_name}' detached unexpectedly."
-                )
-                if self.toolchanger.log:
-                    self.toolchanger.log.always(msg)
-                else:
-                    self.printer.lookup_object("gcode").respond_info(msg)
 
-                self._run_gcode_callback(
-                    self._get_drop_gcode(tool=tool_obj),
-                    tool=tool_obj,
-                )
+                delay = self._resolve_event_delay(tool=tool_obj)
+                if delay > 0.0:
+                    if self._drop_timer is None:
+                        self._pending_drop_tool = tool_obj
+                        self._pending_drop_reason = reason
+                        reactor = self.printer.get_reactor()
+                        self._drop_timer = reactor.register_timer(
+                            self._handle_drop_timer,
+                            reactor.monotonic() + delay,
+                        )
+                    return
+
+                self._execute_tool_drop(eventtime, tool_obj, reason)
 
             else:
                 # Manual dismount while idle / stationary
+                self._cancel_pending_drop()
                 if eventtime - self._last_dismount_eventtime < 1.0:
                     return
                 self._last_dismount_eventtime = eventtime
@@ -313,6 +325,18 @@ class KtcSafety:
 
         # --- SENSOR STATE: TRIGGERED (True) -> Tool Attached / Mounted / Reconnected ---
         else:
+            if self._drop_timer is not None:
+                self._cancel_pending_drop()
+                if self.toolchanger.log:
+                    self.toolchanger.log.info(
+                        f"KTC SAFETY: Tool presence reasserted within debounce window ({self.toolchanger.name}); transient drop cancelled."
+                    )
+                if getattr(self, "_mounted_by_machine", False) or tc_state == self.toolchanger.StateType.ENGAGED:
+                    return
+
+            if getattr(self, "_mounted_by_machine", False) and tc_state == self.toolchanger.StateType.ENGAGED:
+                return
+
             if eventtime - self._last_mount_eventtime < 1.0:
                 return
             self._last_mount_eventtime = eventtime
@@ -727,8 +751,57 @@ class KtcSafety:
         self._pending_reboot_tool = None
         return self.printer.get_reactor().NEVER
 
+    def _handle_drop_timer(self, eventtime: float):
+        self._drop_timer = None
+        tool_obj = self._pending_drop_tool
+        reason = self._pending_drop_reason
+        self._pending_drop_tool = None
+        self._pending_drop_reason = None
+
+        if not self.enabled or self._in_toolchange:
+            return self.printer.get_reactor().NEVER
+
+        # Confirm if tool is genuinely absent; if physical sensor is now triggered, drop was transient
+        if self.query_tool_present(tool_obj) is True:
+            return self.printer.get_reactor().NEVER
+
+        self._execute_tool_drop(eventtime, tool_obj, reason or "after debounce delay")
+        return self.printer.get_reactor().NEVER
+
+    def _execute_tool_drop(self, eventtime: float, tool_obj: typing.Any, reason: str):
+        if eventtime - self._last_drop_eventtime < 1.0:
+            return
+        self._last_drop_eventtime = eventtime
+
+        tool_name = (
+            tool_obj.name
+            if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS
+            else "unknown"
+        )
+
+        if tool_obj and tool_obj not in self.toolchanger.INVALID_TOOLS:
+            tool_obj.state = self.toolchanger.StateType.ERROR
+
+        self.toolchanger.state = self.toolchanger.StateType.ERROR
+        self._mounted_by_machine = False
+
+        msg = (
+            f"KTC SAFETY ALERT: Tool drop detected on toolchanger '{self.toolchanger.name}' ({reason})! "
+            f"Active tool '{tool_name}' detached unexpectedly."
+        )
+        if self.toolchanger.log:
+            self.toolchanger.log.always(msg)
+        else:
+            self.printer.lookup_object("gcode").respond_info(msg)
+
+        self._run_gcode_callback(
+            self._get_drop_gcode(tool=tool_obj),
+            tool=tool_obj,
+        )
+
     def unlock(self):
         """Clears ERROR state and synchronizes tool state based on sensor query or prior state."""
+        self._cancel_pending_drop()
         if self._reboot_timer is not None:
             reactor = self.printer.get_reactor()
             reactor.update_timer(self._reboot_timer, reactor.NEVER)

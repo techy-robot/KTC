@@ -1328,6 +1328,8 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                 else "None"
             )
 
+            event_delay = safety._resolve_event_delay(tool=tool)
+
             msg_lines = [
                 f"// --- KTC SAFETY STATUS ({tc.name}) ---",
                 f"// Safety Enabled: {safety.enabled}",
@@ -1335,6 +1337,7 @@ class Ktc(KtcBaseClass, KtcConstantsClass):
                 f"// Active / Selected Tool: {active_name}",
                 f"// Tool Present: {is_present}",
                 f"// Carriage Sensor: {carriage_status}",
+                f"// Event Delay: {event_delay:.3f}s",
             ] + tool_reports
             msg = "\n".join(msg_lines)
             gcmd.respond_info(msg)
