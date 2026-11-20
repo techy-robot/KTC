@@ -106,6 +106,87 @@ class TestKtcSafety(KtcTestCase):
         # Toolchanger should recover to READY state
         self.assertEqual(self.tc.state, self.tc.StateType.READY)
 
+    def test_sensor_event_delay_filters_transient_vibration(self) -> None:
+        """Verify transient switch chatter/vibration within event_delay window (250ms default) does not trigger error."""
+        safety: KtcSafety = self.tc.safety
+        cfg = self.harness.get_config_wrapper("ktc_toolchanger toolchanger")
+        sensor = KtcSwitchSensor(self.harness.printer, cfg, "gpio_deb", callback=safety._handle_sensor_change)
+        safety.carriage_sensor = sensor
+
+        # Engage tool 0 as mounted by machine with sensor triggered
+        sensor.state = True
+        self.tc.selected_tool = self.tool0
+        self.tc.state = self.tc.StateType.ENGAGED
+        self.tool0.state = self.tool0.StateType.ENGAGED
+        safety.set_mounted_by_machine(True)
+
+        # Vibration: sensor momentarily opens (0)
+        sensor._handle_button_event(self.harness.printer.reactor.monotonic(), 0)
+        # Should NOT be in ERROR immediately
+        self.assertEqual(self.tc.state, self.tc.StateType.ENGAGED)
+        self.assertIsNotNone(safety._drop_timer)
+
+        # Within 50ms (well under default 0.25s / 250ms event_delay), contact is restored (1)
+        self.harness.printer.reactor.advance_time(0.05)
+        sensor._handle_button_event(self.harness.printer.reactor.monotonic(), 1)
+
+        # Drop timer should be cancelled, still ENGAGED, and still machine mounted
+        self.assertIsNone(safety._drop_timer)
+        self.assertEqual(self.tc.state, self.tc.StateType.ENGAGED)
+        self.assertTrue(safety._mounted_by_machine)
+
+        # Advancing past 250ms should still not cause an error
+        self.harness.printer.reactor.advance_time(0.5)
+        self.assertEqual(self.tc.state, self.tc.StateType.ENGAGED)
+
+    def test_sensor_event_delay_confirms_real_drop(self) -> None:
+        """Verify sensor continuously open past event_delay (0.25s) confirms drop and triggers ERROR."""
+        safety: KtcSafety = self.tc.safety
+        cfg = self.harness.get_config_wrapper("ktc_toolchanger toolchanger")
+        sensor = KtcSwitchSensor(self.harness.printer, cfg, "gpio_deb2", callback=safety._handle_sensor_change)
+        safety.carriage_sensor = sensor
+
+        # Engage tool 0
+        sensor.state = True
+        self.tc.selected_tool = self.tool0
+        self.tc.state = self.tc.StateType.ENGAGED
+        self.tool0.state = self.tool0.StateType.ENGAGED
+        safety.set_mounted_by_machine(True)
+
+        # Real tool drop: sensor opens (0)
+        sensor._handle_button_event(self.harness.printer.reactor.monotonic(), 0)
+        self.assertEqual(self.tc.state, self.tc.StateType.ENGAGED)
+
+        # Advance past 0.25s event_delay
+        self.harness.printer.reactor.advance_time(0.3)
+
+        # Toolchanger and tool should now be in ERROR state
+        self.assertEqual(self.tc.state, self.tc.StateType.ERROR)
+        self.assertEqual(self.tool0.state, self.tool0.StateType.ERROR)
+
+    def test_sensor_event_delay_zero_immediate_drop(self) -> None:
+        """Verify event_delay = 0 causes immediate drop detection without delay."""
+        safety: KtcSafety = self.tc.safety
+        cfg = self.harness.get_config_wrapper("ktc_toolchanger toolchanger")
+        sensor = KtcSwitchSensor(self.harness.printer, cfg, "gpio_deb3", callback=safety._handle_sensor_change)
+        safety.carriage_sensor = sensor
+
+        # Set 0 event delay
+        self.tc.event_delay = 0.0
+        self.tool0.event_delay = 0.0
+
+        sensor.state = True
+        self.tc.selected_tool = self.tool0
+        self.tc.state = self.tc.StateType.ENGAGED
+        self.tool0.state = self.tool0.StateType.ENGAGED
+        safety.set_mounted_by_machine(True)
+
+        # Trigger open (0)
+        sensor._handle_button_event(self.harness.printer.reactor.monotonic(), 0)
+
+        # Should immediately be in ERROR
+        self.assertEqual(self.tc.state, self.tc.StateType.ERROR)
+
 
 if __name__ == "__main__":
     unittest.main()

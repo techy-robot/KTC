@@ -169,6 +169,12 @@ When not specified they will be initialized with the default value as below.
 #   while a tool is active/engaged. Default is PAUSE.
 #   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
 
+#event_delay = 0.25
+#   Minimum amount of time in seconds (default 0.25, i.e. 250ms) that a tool presence switch
+#   must continuously remain untriggered while moving or mounted before declaring an unexpected tool drop.
+#   Filters transient contact chatter, electrical noise, or vibrations.
+#   Set to 0 to disable delay and trigger immediately on switch release.
+
 #on_tool_mount_gcode =
 #   G-code macro or command to execute when a tool is physically mounted or reconnected.
 #   Provides 'myself' (with .name and .number), 'toolchanger', 'ktc', and 'STATE_TYPE'.
